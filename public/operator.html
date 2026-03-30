@@ -938,17 +938,17 @@
 
     <div class="color-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
       <div class="color-swatch green-swatch">
-        <label>🟢 Yellow at</label>
+        <label>🟢 Green until</label>
         <input type="number" id="s-yellow-at" min="0">
         <div class="hint">seconds left</div>
       </div>
       <div class="color-swatch yellow-swatch">
-        <label>🟡 Red at</label>
+        <label>🟡 Yellow until</label>
         <input type="number" id="s-red-at" min="0">
         <div class="hint">seconds left</div>
       </div>
       <div class="color-swatch red-swatch">
-        <label>🔴 Flash at</label>
+        <label>🔴 Red + Flash at</label>
         <input type="number" id="s-flash-at" min="0">
         <div class="hint">seconds left</div>
       </div>
@@ -1370,7 +1370,7 @@ let openEditorOnNextCreate = false;
 
 document.getElementById('btn-add').addEventListener('click', () => {
   openEditorOnNextCreate = true;
-  send({ action: 'create', timer: { name: 'New Timer', duration: 300 } });
+  send({ action: 'create', timer: { name: 'New Timer' } });
 });
 
 // ── Settings panel ────────────────────────────────────────────────────────
