@@ -9,12 +9,18 @@ A self-hosted stage timer for live events and presentations. Run it in Docker, c
 
 <table align="center">
   <tr>
+    <td align="center"><a href="images/landing-page.png"><img src="images/landing-page.png" height="200px" alt="Landing Page" /></a></td>
     <td align="center"><a href="images/operator-page.png"><img src="images/operator-page.png" height="200px" alt="Operator Console" /></a></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Landing Page</sub></td>
+    <td align="center"><sub>Operator Console</sub></td>
+  </tr>
+  <tr>
     <td align="center"><a href="images/display-page.png"><img src="images/display-page.png" height="200px" alt="Display Screen" /></a></td>
     <td align="center"><a href="images/settings-page.png"><img src="images/settings-page.png" height="200px" alt="Settings Panel" /></a></td>
   </tr>
   <tr>
-    <td align="center"><sub>Operator Console</sub></td>
     <td align="center"><sub>Display Screen</sub></td>
     <td align="center"><sub>Settings Panel</sub></td>
   </tr>
