@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ShowClock — Display</title>
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;700;800&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
@@ -146,6 +147,18 @@
     border-color: color-mix(in srgb, var(--red) 30%, transparent);
   }
 
+  /* ── Total time remaining (shown when subtimers active) ── */
+  #total-remaining {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: clamp(13px, 1.6vw, 20px);
+    font-weight: 400;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+    opacity: 0;
+    transition: opacity 0.4s;
+  }
+  #total-remaining.visible { opacity: 1; }
+
   /* ── Notes panel ── */
   #notes-panel {
     width: 100%;
@@ -221,7 +234,36 @@
 
   #notes-panel p + p { margin-top: 4px; }
 
-  /* ── Progress bar ── */
+  /* ── Parent timer label (shown when subtimer is active) ── */
+  #parent-label {
+    font-size: clamp(14px, 2vw, 24px);
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    text-align: center;
+    opacity: 0;
+    transition: opacity 0.4s;
+  }
+
+  #parent-label.visible { opacity: 1; }
+
+  /* ── Overall progress bar (thin, above main bar) ── */
+  #overall-progress-wrap {
+    position: fixed;
+    bottom: 10px;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: transparent;
+  }
+
+  #overall-progress-bar {
+    height: 100%;
+    background: rgba(255,255,255,0.2);
+    width: 100%;
+    transition: width 0.9s linear;
+  }
   #progress-wrap {
     position: fixed;
     bottom: 0;
@@ -313,8 +355,10 @@
   <div id="queue-dots"></div>
 
   <div id="clock-area">
+    <div id="parent-label"></div>
     <div id="timer-name"></div>
     <div id="clock">--:--</div>
+    <div id="total-remaining"></div>
     <div id="status-badge">IDLE</div>
     <div id="notes-panel"></div>
   </div>
@@ -324,14 +368,17 @@
   <div id="progress-bar"></div>
 </div>
 
+<div id="overall-progress-wrap">
+  <div id="overall-progress-bar"></div>
+</div>
+
 <div id="conn-status">
   <div id="conn-dot"></div>
   <span id="conn-label">Connecting</span>
 </div>
 
 <script>
-let state = { timers: [], activeTimerIndex: null };
-let currentColor = 'var(--green)';
+let state = { timers: [], activeTimerIndex: null, activeSubtimerIndex: null };
 
 // ── WebSocket ────────────────────────────────────────────────────────────
 function connect() {
@@ -351,7 +398,7 @@ function connect() {
   ws.addEventListener('message', e => {
     const msg = JSON.parse(e.data);
     if (msg.type === 'state' || msg.type === 'tick') {
-      state = { timers: msg.timers, activeTimerIndex: msg.activeTimerIndex };
+      state = { timers: msg.timers, activeTimerIndex: msg.activeTimerIndex, activeSubtimerIndex: msg.activeSubtimerIndex ?? null };
       render();
     }
   });
@@ -375,7 +422,7 @@ function getColor(t) {
 
 // ── Render ───────────────────────────────────────────────────────────────
 function render() {
-  const { timers, activeTimerIndex } = state;
+  const { timers, activeTimerIndex, activeSubtimerIndex } = state;
   const t = activeTimerIndex !== null ? timers[activeTimerIndex] : null;
 
   const idle    = document.getElementById('idle-screen');
@@ -390,23 +437,41 @@ function render() {
   idle.classList.add('hidden');
   display.classList.add('visible');
 
-  // Color
-  const color = getColor(t);
+  const sub = (activeSubtimerIndex !== null && t.subtimers && t.subtimers[activeSubtimerIndex])
+    ? t.subtimers[activeSubtimerIndex] : null;
+
+  // Determine what's ticking and what thresholds to use
+  const active       = sub || t;
+  const displayName  = sub ? sub.name : t.name;
+  const parentName   = sub ? t.name : null;
+
+  // Color based on active entity's thresholds
+  const color = getColor(active);
   document.documentElement.style.setProperty('--current-color', color);
-  document.documentElement.style.setProperty('--flash-rate', `${t.flashRate}ms`);
+  document.documentElement.style.setProperty('--flash-rate', `${active.flashRate}ms`);
 
-  // Clock
+  // Parent label (only when subtimer is active)
+  const parentLabelEl = document.getElementById('parent-label');
+  if (parentName) {
+    parentLabelEl.textContent = parentName;
+    parentLabelEl.classList.add('visible');
+  } else {
+    parentLabelEl.classList.remove('visible');
+  }
+
+  // Timer name (subtimer name if active, else parent name)
+  document.getElementById('timer-name').textContent = displayName;
+
+  // Clock shows active entity's remaining
   const clockEl = document.getElementById('clock');
-  clockEl.textContent = fmt(t.remaining);
+  clockEl.textContent = fmt(active.remaining);
 
-  const shouldFlash = t.status === 'running' && t.remaining <= t.flashAt && t.remaining > 0;
+  const shouldFlash = t.status === 'running' && active.remaining <= active.flashAt && active.remaining > 0;
   clockEl.classList.toggle('flash', shouldFlash);
 
-  // Name & notes
-  document.getElementById('timer-name').textContent = t.name;
+  // Notes (always from parent)
   const notesEl = document.getElementById('notes-panel');
   let notesHtml = (t.message || '').trim();
-  // If the string looks like it's been entity-encoded, decode it first
   if (notesHtml.includes('&lt;') || notesHtml.includes('&amp;')) {
     const txt = document.createElement('textarea');
     txt.innerHTML = notesHtml;
@@ -415,18 +480,41 @@ function render() {
   notesEl.innerHTML = notesHtml;
   notesEl.classList.toggle('has-content', notesHtml.length > 0 && notesHtml !== '<p><br></p>');
 
+  // Total remaining (only shown when subtimers are active)
+  const totalEl = document.getElementById('total-remaining');
+  if (sub && t.subtimers.length > 0) {
+    const parentRemaining = t.subtimers.reduce((sum, s) => sum + s.remaining, 0);
+    totalEl.textContent = `Total Time Remaining: ${fmt(parentRemaining)}`;
+    totalEl.classList.add('visible');
+  } else {
+    totalEl.textContent = '';
+    totalEl.classList.remove('visible');
+  }
+
   // Status badge
   const badge = document.getElementById('status-badge');
   badge.textContent = t.status.toUpperCase();
   badge.className   = t.status;
 
-  // Progress bar
-  const pct = t.duration > 0 ? (t.remaining / t.duration) * 100 : 0;
+  // Main progress bar — active entity's own progress
+  const activePct = active.duration > 0 ? (active.remaining / active.duration) * 100 : 0;
   const bar = document.getElementById('progress-bar');
-  bar.style.width = `${pct}%`;
+  bar.style.width = `${activePct}%`;
   bar.classList.toggle('flash', shouldFlash);
 
-  // Queue dots
+  // Overall progress bar — parent timer's total progress (only visible when subtimers present)
+  const overallBar = document.getElementById('overall-progress-bar');
+  if (sub && t.duration > 0) {
+    // Compute parent remaining as sum of subtimer remainings
+    const parentRemaining = t.subtimers.reduce((sum, s) => sum + s.remaining, 0);
+    const overallPct = (parentRemaining / t.duration) * 100;
+    overallBar.style.width = `${overallPct}%`;
+    overallBar.style.display = '';
+  } else {
+    overallBar.style.display = 'none';
+  }
+
+  // Queue dots (parent timers only)
   const dotsEl = document.getElementById('queue-dots');
   dotsEl.innerHTML = timers.map((_, i) =>
     `<div class="q-dot ${i === activeTimerIndex ? 'active' : ''}"></div>`
