@@ -185,6 +185,21 @@
     cursor: grab;
     user-select: none;
     text-align: center;
+    padding: 4px 2px;
+  }
+
+  .timer-item .drag-handle:active { cursor: grabbing; }
+
+  .timer-item.drag-over-top {
+    border-top: 2px solid var(--accent);
+  }
+
+  .timer-item.drag-over-bottom {
+    border-bottom: 2px solid var(--accent);
+  }
+
+  .timer-item.dragging {
+    opacity: 0.4;
   }
 
   .timer-item .item-info { min-width: 0; }
@@ -1130,8 +1145,8 @@ function renderQueue() {
   }
 
   qEl.innerHTML = timers.map((t, i) => `
-    <div class="timer-item ${i === activeTimerIndex ? 'active' : ''} ${t.id === editingId ? 'editing' : ''}" data-id="${t.id}" data-index="${i}">
-      <div class="drag-handle" title="Drag to reorder">⠿</div>
+    <div class="timer-item ${i === activeTimerIndex ? 'active' : ''} ${t.id === editingId ? 'editing' : ''}" data-id="${t.id}" data-index="${i}" draggable="false">
+      <div class="drag-handle" title="Drag to reorder" draggable="true" data-index="${i}">⠿</div>
       <div class="item-info">
         <div class="item-name">${esc(t.name)}</div>
         <div class="item-duration">${fmt(t.duration)}</div>
@@ -1175,6 +1190,52 @@ function renderQueue() {
       const to = dir === 'up' ? idx - 1 : idx + 1;
       if (to < 0 || to >= state.timers.length) return;
       send({ action: 'reorder', from: idx, to });
+    });
+  });
+
+  // ── Drag-and-drop reorder ──────────────────────────────────────────────
+  let dragFromIndex = null;
+
+  qEl.querySelectorAll('.drag-handle').forEach(handle => {
+    handle.addEventListener('dragstart', e => {
+      dragFromIndex = +handle.dataset.index;
+      handle.closest('.timer-item').classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+
+    handle.addEventListener('dragend', () => {
+      dragFromIndex = null;
+      qEl.querySelectorAll('.timer-item').forEach(el => {
+        el.classList.remove('dragging', 'drag-over-top', 'drag-over-bottom');
+      });
+    });
+  });
+
+  qEl.querySelectorAll('.timer-item').forEach(el => {
+    el.addEventListener('dragover', e => {
+      e.preventDefault();
+      if (dragFromIndex === null) return;
+      const toIndex = +el.dataset.index;
+      if (toIndex === dragFromIndex) return;
+      // Determine top/bottom half
+      const rect = el.getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      qEl.querySelectorAll('.timer-item').forEach(i => i.classList.remove('drag-over-top', 'drag-over-bottom'));
+      el.classList.add(e.clientY < midY ? 'drag-over-top' : 'drag-over-bottom');
+    });
+
+    el.addEventListener('dragleave', () => {
+      el.classList.remove('drag-over-top', 'drag-over-bottom');
+    });
+
+    el.addEventListener('drop', e => {
+      e.preventDefault();
+      if (dragFromIndex === null) return;
+      const toIndex = +el.dataset.index;
+      el.classList.remove('drag-over-top', 'drag-over-bottom');
+      if (toIndex === dragFromIndex) return;
+      send({ action: 'reorder', from: dragFromIndex, to: toIndex });
+      dragFromIndex = null;
     });
   });
 }
