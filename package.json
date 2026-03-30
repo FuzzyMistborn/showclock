@@ -1,0 +1,14 @@
+{
+  "name": "showclock",
+  "version": "1.0.0",
+  "description": "Self-hosted stage timer with operator console and audience display",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.4.3",
+    "express": "^4.18.2",
+    "ws": "^8.16.0"
+  }
+}

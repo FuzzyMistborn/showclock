@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ShowClock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:      #0d0f12;
+    --surface: #151820;
+    --border:  #2a2f3d;
+    --text:    #e8eaf0;
+    --muted:   #6b7280;
+    --accent:  #4f9cf9;
+    --green:   #22c55e;
+    --mono:    'JetBrains Mono', monospace;
+    --sans:    'Syne', sans-serif;
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 48px;
+    padding: 40px 24px;
+    text-align: center;
+  }
+
+  .logo {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .logo-icon {
+    font-size: 52px;
+    line-height: 1;
+  }
+
+  .logo h1 {
+    font-size: 36px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .logo p {
+    font-size: 14px;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+  }
+
+  .cards {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px 36px;
+    text-decoration: none;
+    color: var(--text);
+    width: 240px;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+
+  .card:hover {
+    border-color: var(--accent);
+    transform: translateY(-3px);
+  }
+
+  .card.display:hover { border-color: var(--green); }
+
+  .card-icon { font-size: 32px; }
+
+  .card-title {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+
+  .card-desc {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  .card-url {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent);
+    margin-top: 4px;
+  }
+
+  .card.display .card-url { color: var(--green); }
+
+  .footer {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="logo">
+    <div class="logo-icon">⏱</div>
+    <h1>ShowClock</h1>
+    <p>Self-hosted stage timer for live events &amp; presentations</p>
+  </div>
+
+  <div class="cards">
+    <a href="/operator.html" class="card operator">
+      <div class="card-icon">🎛️</div>
+      <div class="card-title">Operator Console</div>
+      <div class="card-desc">Control timers, manage the queue, and run your show.</div>
+      <div class="card-url">/operator.html</div>
+    </a>
+
+    <a href="/display.html" class="card display">
+      <div class="card-icon">📺</div>
+      <div class="card-title">Display Screen</div>
+      <div class="card-desc">Full-screen clock for projectors and audience monitors.</div>
+      <div class="card-url">/display.html</div>
+    </a>
+  </div>
+
+  <div class="footer">SHOWCLOCK</div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,1463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ShowClock — Operator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.snow.min.css" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0d0f12;
+    --surface:   #151820;
+    --surface2:  #1e2230;
+    --border:    #2a2f3d;
+    --text:      #e8eaf0;
+    --muted:     #6b7280;
+    --accent:    #4f9cf9;
+    --green:     #22c55e;
+    --yellow:    #eab308;
+    --red:       #ef4444;
+    --active-bg: #1a2540;
+    --active-border: #4f9cf9;
+    --radius:    8px;
+    --mono:      'JetBrains Mono', monospace;
+    --sans:      'Syne', sans-serif;
+  }
+
+  html, body { height: 100%; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    grid-template-rows: 56px 1fr;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* ── Header ── */
+  header {
+    grid-column: 1 / -1;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 16px;
+  }
+
+  header h1 {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  header .pill {
+    font-family: var(--mono);
+    font-size: 11px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    padding: 3px 10px;
+    border-radius: 20px;
+    color: var(--muted);
+  }
+
+  header .spacer { flex: 1; }
+
+  header .hotkey-hint {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    gap: 16px;
+  }
+
+  header .hotkey-hint kbd {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 6px;
+    color: var(--text);
+  }
+
+  /* ── Queue panel ── */
+  #queue-panel {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .panel-header {
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .panel-header h2 {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    flex: 1;
+  }
+
+  .btn-icon {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text);
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .btn-icon:hover { background: var(--surface2); border-color: var(--accent); }
+
+  #timer-queue {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  #timer-queue::-webkit-scrollbar { width: 4px; }
+  #timer-queue::-webkit-scrollbar-track { background: transparent; }
+  #timer-queue::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .timer-item {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    cursor: pointer;
+    display: grid;
+    grid-template-columns: 16px 1fr auto;
+    gap: 8px;
+    align-items: center;
+    transition: border-color 0.15s, background 0.15s;
+    position: relative;
+  }
+
+  .timer-item:hover { border-color: var(--accent); }
+
+  /* Row that is LIVE on the display — no special row highlight, button handles it */
+  .timer-item.active { }
+
+  .timer-item.active::before { content: none; }
+
+  /* Row currently open in the editor — blue */
+  .timer-item.editing {
+    background: var(--active-bg);
+    border-color: var(--active-border);
+  }
+
+  .timer-item.editing::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--accent);
+    border-radius: var(--radius) 0 0 var(--radius);
+  }
+
+  .timer-item .drag-handle {
+    color: var(--muted);
+    font-size: 12px;
+    cursor: grab;
+    user-select: none;
+    text-align: center;
+  }
+
+  .timer-item .item-info { min-width: 0; }
+
+  .timer-item .item-name {
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .timer-item .item-duration {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  .timer-item .item-status {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 20px;
+    white-space: nowrap;
+  }
+  .status-idle     { background: #1e2230; color: var(--muted); }
+  .status-running  { background: #14301f; color: var(--green); }
+  .status-paused   { background: #2d2a10; color: var(--yellow); }
+  .status-finished { background: #2d1212; color: var(--red); }
+
+  .item-actions {
+    display: flex;
+    gap: 4px;
+  }
+
+  .item-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 13px;
+    padding: 2px 4px;
+    border-radius: 4px;
+    transition: color 0.15s;
+  }
+  .item-btn:hover { color: var(--text); }
+  .item-btn.del:hover { color: var(--red); }
+
+  /* ── Controls + Editor ── */
+  #main-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Active timer display */
+  #active-display {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 20px 28px;
+    display: flex;
+    align-items: center;
+    gap: 28px;
+  }
+
+  #active-clock-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 240px;
+  }
+
+  #active-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  #active-clock {
+    font-family: var(--mono);
+    font-size: 64px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -2px;
+    color: var(--green);
+    transition: color 0.4s;
+  }
+
+  #active-clock.yellow { color: var(--yellow); }
+  #active-clock.red    { color: var(--red); }
+  #active-clock.flash  { animation: flash-anim var(--flash-rate, 1s) step-start infinite; }
+
+  @keyframes flash-anim {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0; }
+  }
+
+  #active-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    margin-top: 4px;
+  }
+
+  #active-progress-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  /* ── Scrubber ── */
+  #scrubber {
+    position: relative;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    cursor: ew-resize;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #scrubber-track {
+    position: absolute;
+    left: 0; right: 0;
+    height: 8px;
+    background: var(--surface2);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  #active-progress-bar {
+    height: 100%;
+    border-radius: 8px;
+    background: var(--green);
+    width: 100%;
+    pointer-events: none;
+  }
+
+  /* No transition while dragging — added/removed via JS */
+  #active-progress-bar.smooth { transition: width 0.9s linear, background 0.4s; }
+  #active-progress-bar.yellow { background: var(--yellow); }
+  #active-progress-bar.red    { background: var(--red); }
+
+  #scrubber-thumb {
+    position: absolute;
+    top: 50%;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid var(--accent);
+    transform: translate(-50%, -50%);
+    box-shadow: 0 1px 6px rgba(0,0,0,0.4);
+    transition: left 0.9s linear, opacity 0.2s;
+    pointer-events: none;
+    opacity: 0;
+  }
+
+  #scrubber:hover #scrubber-thumb,
+  #scrubber.dragging #scrubber-thumb {
+    opacity: 1;
+  }
+
+  #scrubber.dragging #scrubber-thumb {
+    transition: none;
+    border-color: var(--text);
+    background: var(--accent);
+  }
+
+  #scrubber-tooltip {
+    position: absolute;
+    top: -28px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 3px 8px;
+    pointer-events: none;
+    white-space: nowrap;
+    transform: translateX(-50%);
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+
+  #scrubber.dragging #scrubber-tooltip { opacity: 1; }
+
+  #active-message {
+    font-size: 12px;
+    color: var(--muted);
+    font-style: italic;
+  }
+
+  /* Transport controls */
+  #transport {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .btn {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.04em;
+    padding: 8px 18px;
+    transition: all 0.15s;
+  }
+
+  .btn-ghost {
+    background: var(--surface2);
+    color: var(--text);
+  }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .btn-primary:hover { opacity: 0.85; }
+
+  .btn-danger {
+    background: none;
+    border-color: var(--border);
+    color: var(--muted);
+  }
+  .btn-danger:hover { border-color: var(--red); color: var(--red); }
+
+  .btn-big {
+    width: 52px;
+    height: 52px;
+    padding: 0;
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Editor area */
+  #editor-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 28px;
+  }
+
+  #editor-area::-webkit-scrollbar { width: 4px; }
+  #editor-area::-webkit-scrollbar-track { background: transparent; }
+  #editor-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .editor-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 16px;
+  }
+
+  #no-selection {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  #no-selection .icon { font-size: 36px; }
+
+  .editor-form {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .field.full { grid-column: 1 / -1; }
+
+  .field label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .field input, .field textarea {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 9px 12px;
+    outline: none;
+    transition: border-color 0.15s;
+    width: 100%;
+  }
+
+  .field input:focus, .field textarea:focus {
+    border-color: var(--accent);
+  }
+
+  .field textarea { resize: vertical; min-height: 60px; }
+
+  .field .hint {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  .color-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+  }
+
+  .color-swatch {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .color-swatch label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .color-swatch.green-swatch label { color: var(--green); }
+  .color-swatch.yellow-swatch label { color: var(--yellow); }
+  .color-swatch.red-swatch label { color: var(--red); }
+
+  .color-swatch input {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 5px 8px;
+    width: 100%;
+  }
+
+  .editor-actions {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 8px;
+  }
+
+  .section-divider {
+    grid-column: 1 / -1;
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 4px 0;
+  }
+
+  .section-label {
+    grid-column: 1 / -1;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  /* Toast */
+  #toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--accent);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 10px 20px;
+    border-radius: 40px;
+    transition: transform 0.3s ease;
+    pointer-events: none;
+    z-index: 999;
+  }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+
+  .empty-queue {
+    text-align: center;
+    padding: 32px 16px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  /* ── Settings slide-out panel ── */
+  #settings-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 100;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s;
+  }
+  #settings-overlay.open { opacity: 1; pointer-events: all; }
+
+  #settings-panel {
+    position: fixed;
+    top: 56px; right: 0; bottom: 0;
+    width: 340px;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    z-index: 101;
+    transform: translateX(100%);
+    transition: transform 0.25s ease;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #settings-panel.open { transform: translateX(0); }
+
+  #settings-panel .panel-header {
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+  }
+
+  #settings-panel .panel-header h2 {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    flex: 1;
+  }
+
+  #settings-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .settings-section-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: -8px;
+  }
+
+  #settings-footer {
+    padding: 14px 16px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+  }
+
+  /* ── Toggle switch ── */
+  .toggle-wrap { display: flex; align-items: center; }
+  .toggle-track {
+    width: 36px; height: 20px;
+    background: var(--border);
+    border-radius: 20px;
+    position: relative;
+    cursor: pointer;
+    transition: background 0.2s;
+    flex-shrink: 0;
+  }
+  .toggle-track.on { background: var(--accent); }
+  .toggle-thumb {
+    position: absolute;
+    top: 3px; left: 3px;
+    width: 14px; height: 14px;
+    background: #fff;
+    border-radius: 50%;
+    transition: left 0.2s;
+  }
+  .toggle-track.on .toggle-thumb { left: 19px; }
+
+  /* ── Set Active button on queue rows ── */
+  .item-btn.set-active-btn {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 7px;
+    transition: all 0.15s;
+  }
+  .item-btn.set-active-btn:hover { background: var(--surface); color: var(--text); border-color: var(--green); }
+  .item-btn.set-active-btn.is-active { background: #0d1f12; color: var(--green); border-color: var(--green); }
+
+  /* ── Quill notes editor ── */
+  .notes-wrap {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .notes-wrap label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .notes-live-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    padding: 2px 8px;
+    border-radius: 20px;
+    background: #14301f;
+    color: var(--green);
+    opacity: 0;
+    transition: opacity 0.4s;
+  }
+  .notes-live-badge.visible { opacity: 1; }
+
+  #quill-editor {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    min-height: 140px;
+    max-height: 260px;
+    overflow-y: auto;
+  }
+
+  /* Override Quill snow theme to match dark UI */
+  .ql-toolbar.ql-snow {
+    background: var(--surface);
+    border: 1px solid var(--border) !important;
+    border-bottom: 1px solid var(--border) !important;
+    border-radius: var(--radius) var(--radius) 0 0;
+    padding: 6px 8px;
+  }
+
+  .ql-container.ql-snow {
+    border: 1px solid var(--border) !important;
+    border-top: none !important;
+    border-radius: 0 0 var(--radius) var(--radius);
+    font-family: var(--sans);
+    font-size: 13px;
+  }
+
+  .ql-editor { min-height: 100px; color: var(--text); padding: 10px 14px; }
+  .ql-editor.ql-blank::before { color: var(--muted); font-style: normal; }
+
+  .ql-snow .ql-stroke { stroke: var(--muted) !important; }
+  .ql-snow .ql-fill  { fill:   var(--muted) !important; }
+  .ql-snow .ql-picker-label { color: var(--muted) !important; }
+  .ql-snow .ql-picker-options { background: var(--surface2); border-color: var(--border); }
+  .ql-snow.ql-toolbar button:hover .ql-stroke,
+  .ql-snow.ql-toolbar button.ql-active .ql-stroke { stroke: var(--accent) !important; }
+  .ql-snow.ql-toolbar button:hover .ql-fill,
+  .ql-snow.ql-toolbar button.ql-active .ql-fill   { fill:   var(--accent) !important; }
+  .ql-snow .ql-editor ul, .ql-snow .ql-editor ol  { padding-left: 1.4em; }
+  .ql-snow .ql-editor li { color: var(--text); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>⏱ ShowClock</h1>
+  <span class="pill">OPERATOR</span>
+  <div class="spacer"></div>
+  <div class="hotkey-hint">
+    <span><kbd>Space</kbd> Play/Pause</span>
+    <span><kbd>←</kbd><kbd>→</kbd> Prev/Next</span>
+    <span><kbd>R</kbd> Reset</span>
+  </div>
+  <button class="btn-icon" id="btn-settings" title="Settings" style="margin-left:12px;font-size:18px;">⚙</button>
+</header>
+
+<!-- Queue -->
+<div id="queue-panel">
+  <div class="panel-header">
+    <h2>Timer Queue</h2>
+    <button class="btn-icon" id="btn-add" title="Add timer">+</button>
+  </div>
+  <div id="timer-queue"></div>
+</div>
+
+<!-- Main -->
+<div id="main-panel">
+
+  <!-- Active display -->
+  <div id="active-display">
+    <div id="active-clock-wrap">
+      <div id="active-label">ACTIVE TIMER</div>
+      <div id="active-clock">--:--</div>
+      <div id="active-name">No timer selected</div>
+    </div>
+
+    <div id="active-progress-wrap">
+      <div id="scrubber" title="Drag to scrub timer">
+        <div id="scrubber-track">
+          <div id="active-progress-bar" class="smooth"></div>
+        </div>
+        <div id="scrubber-thumb"></div>
+        <div id="scrubber-tooltip">0:00</div>
+      </div>
+    </div>
+
+    <div id="transport">
+      <button class="btn btn-ghost btn-big" id="btn-prev" title="Previous (←)">⏮</button>
+      <button class="btn btn-primary btn-big" id="btn-play" title="Play/Pause (Space)">▶</button>
+      <button class="btn btn-ghost btn-big" id="btn-next" title="Next (→)">⏭</button>
+      <button class="btn btn-danger" id="btn-reset" title="Reset (R)">↺ Reset</button>
+      <button class="btn btn-ghost" id="btn-add30" title="+30 seconds">+30s</button>
+    </div>
+  </div>
+
+  <!-- Editor -->
+  <div id="editor-area">
+    <div id="no-selection">
+      <span class="icon">🎬</span>
+      <span>Select a timer from the queue to edit it</span>
+    </div>
+    <div id="editor" style="display:none">
+      <div class="editor-title" id="editor-heading">Edit Timer</div>
+      <div class="editor-form">
+
+        <div class="field full">
+          <label>Timer Name</label>
+          <input type="text" id="f-name" placeholder="e.g. Opening Remarks">
+        </div>
+
+        <div class="field">
+          <label>Duration</label>
+          <input type="text" id="f-duration" placeholder="mm:ss or seconds">
+          <div class="hint">e.g. 5:00 or 300</div>
+        </div>
+
+        <div class="field" id="remaining-field" style="display:none">
+          <label>Time Remaining</label>
+          <div id="f-remaining-display" style="
+            font-family: var(--mono);
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--green);
+            line-height: 1;
+            padding: 6px 0 2px;
+          ">--:--</div>
+          <div class="hint">time left on this timer</div>
+        </div>
+
+        <div class="notes-wrap">
+          <label>
+            Show Notes
+            <span class="notes-live-badge" id="notes-live-badge">● LIVE</span>
+          </label>
+          <div id="quill-editor"></div>
+        </div>
+
+        <hr class="section-divider">
+        <div class="section-label">Color Thresholds (seconds remaining)</div>
+
+        <div class="color-row full">
+          <div class="color-swatch green-swatch">
+            <label>🟢 Green until</label>
+            <input type="number" id="f-yellow-at" min="0" placeholder="60">
+            <div class="hint">seconds left</div>
+          </div>
+          <div class="color-swatch yellow-swatch">
+            <label>🟡 Yellow until</label>
+            <input type="number" id="f-red-at" min="0" placeholder="30">
+            <div class="hint">seconds left</div>
+          </div>
+          <div class="color-swatch red-swatch">
+            <label>🔴 Red + Flash at</label>
+            <input type="number" id="f-flash-at" min="0" placeholder="30">
+            <div class="hint">seconds left</div>
+          </div>
+        </div>
+
+        <hr class="section-divider">
+        <div class="section-label">Flash Settings</div>
+
+        <div class="field">
+          <label>Flash Rate (ms)</label>
+          <input type="number" id="f-flash-rate" min="100" max="5000" placeholder="1000">
+          <div class="hint">e.g. 500 = fast, 1000 = normal</div>
+        </div>
+
+        <div class="editor-actions">
+          <button class="btn btn-ghost" id="btn-cancel-edit">Cancel</button>
+          <button class="btn btn-primary" id="btn-save-edit">Save Changes</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<!-- Settings slide-out -->
+<div id="settings-overlay"></div>
+<div id="settings-panel">
+  <div class="panel-header">
+    <h2>⚙ Settings &amp; Defaults</h2>
+    <button class="btn-icon" id="btn-settings-close" style="font-size:14px;">✕</button>
+  </div>
+  <div id="settings-body">
+    <div class="settings-section-label">New Timer Defaults</div>
+
+    <div class="field">
+      <label>Default Duration</label>
+      <input type="text" id="s-duration" placeholder="mm:ss or seconds">
+      <div class="hint">Applied when creating a new timer</div>
+    </div>
+
+    <div class="settings-section-label">Default Color Thresholds</div>
+
+    <div class="color-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+      <div class="color-swatch green-swatch">
+        <label>🟢 Yellow at</label>
+        <input type="number" id="s-yellow-at" min="0">
+        <div class="hint">seconds left</div>
+      </div>
+      <div class="color-swatch yellow-swatch">
+        <label>🟡 Red at</label>
+        <input type="number" id="s-red-at" min="0">
+        <div class="hint">seconds left</div>
+      </div>
+      <div class="color-swatch red-swatch">
+        <label>🔴 Flash at</label>
+        <input type="number" id="s-flash-at" min="0">
+        <div class="hint">seconds left</div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Default Flash Rate (ms)</label>
+      <input type="number" id="s-flash-rate" min="100" max="5000">
+      <div class="hint">e.g. 500 = fast, 1000 = normal</div>
+    </div>
+
+    <div class="settings-section-label">Playback Behavior</div>
+
+    <div class="field">
+      <label style="flex-direction:row;align-items:center;gap:10px;cursor:pointer;">
+        <div class="toggle-wrap">
+          <input type="checkbox" id="s-auto-start" style="display:none;">
+          <div class="toggle-track" id="toggle-track-auto-start">
+            <div class="toggle-thumb"></div>
+          </div>
+        </div>
+        Auto-start on advance
+      </label>
+      <div class="hint">Automatically start the timer when clicking ▶ Live, Next, or Prev</div>
+    </div>
+  </div>
+  <div id="settings-footer">
+    <button class="btn btn-ghost" id="btn-settings-cancel">Cancel</button>
+    <button class="btn btn-primary" id="btn-settings-save">Save Defaults</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.min.js"></script>
+<script>
+// ── State ─────────────────────────────────────────────────────────────────
+let state = { timers: [], activeTimerIndex: null, settings: {} };
+let editingId = null;
+let flashInterval = null;
+let quill = null;
+let notesSyncTimeout = null;
+let suppressQuillEvent = false;
+
+// ── WebSocket ─────────────────────────────────────────────────────────────
+const ws = new WebSocket(`ws://${location.host}`);
+ws.addEventListener('message', e => {
+  const msg = JSON.parse(e.data);
+  if (msg.type === 'state' || msg.type === 'tick') {
+    state = { timers: msg.timers, activeTimerIndex: msg.activeTimerIndex, settings: msg.settings || {} };
+    render();
+    if (openEditorOnNextCreate && msg.type === 'state' && state.timers.length > 0) {
+      openEditorOnNextCreate = false;
+      const last = state.timers[state.timers.length - 1];
+      openEditor(last.id);
+    }
+  }
+});
+
+function send(obj) { ws.send(JSON.stringify(obj)); }
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function fmt(s) {
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+}
+
+function parseDuration(val) {
+  val = val.trim();
+  if (val.includes(':')) {
+    const [m, s] = val.split(':').map(Number);
+    return m * 60 + (s || 0);
+  }
+  return parseInt(val) || 0;
+}
+
+function colorClass(timer) {
+  if (!timer) return '';
+  if (timer.remaining <= timer.redAt)    return 'red';
+  if (timer.remaining <= timer.yellowAt) return 'yellow';
+  return '';
+}
+
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2000);
+}
+
+// ── Scrubber state ────────────────────────────────────────────────────────
+let isDragging = false;
+let dragPreviewPct = null; // 0–100 while dragging
+
+function initScrubber() {
+  const scrubber = document.getElementById('scrubber');
+  const thumb    = document.getElementById('scrubber-thumb');
+  const tooltip  = document.getElementById('scrubber-tooltip');
+
+  function getPct(e) {
+    const rect = scrubber.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  }
+
+  function startDrag(e) {
+    const { timers, activeTimerIndex } = state;
+    if (activeTimerIndex === null || !timers[activeTimerIndex]) return;
+    isDragging = true;
+    scrubber.classList.add('dragging');
+    document.getElementById('active-progress-bar').classList.remove('smooth');
+    thumb.style.transition = 'none';
+    moveDrag(e);
+  }
+
+  function moveDrag(e) {
+    if (!isDragging) return;
+    e.preventDefault();
+    const { timers, activeTimerIndex } = state;
+    const t = timers[activeTimerIndex];
+    if (!t) return;
+
+    const pct = getPct(e);
+    dragPreviewPct = pct * 100;
+    const previewRemaining = Math.round(pct * t.duration);
+
+    // Update bar visually
+    document.getElementById('active-progress-bar').style.width = `${dragPreviewPct}%`;
+
+    // Move thumb
+    thumb.style.left = `${dragPreviewPct}%`;
+    thumb.style.transition = 'none';
+
+    // Tooltip
+    tooltip.textContent = fmt(previewRemaining);
+    tooltip.style.left  = `${dragPreviewPct}%`;
+
+    // Update clock preview
+    document.getElementById('active-clock').textContent = fmt(previewRemaining);
+  }
+
+  function endDrag(e) {
+    if (!isDragging) return;
+    isDragging = false;
+    scrubber.classList.remove('dragging');
+    document.getElementById('active-progress-bar').classList.add('smooth');
+
+    const { timers, activeTimerIndex } = state;
+    const t = timers[activeTimerIndex];
+    if (t && dragPreviewPct !== null) {
+      const newRemaining = Math.round((dragPreviewPct / 100) * t.duration);
+      send({ action: 'scrub', remaining: newRemaining });
+    }
+    dragPreviewPct = null;
+  }
+
+  scrubber.addEventListener('mousedown',  startDrag);
+  scrubber.addEventListener('touchstart', startDrag, { passive: false });
+  document.addEventListener('mousemove',  moveDrag);
+  document.addEventListener('touchmove',  moveDrag, { passive: false });
+  document.addEventListener('mouseup',    endDrag);
+  document.addEventListener('touchend',   endDrag);
+}
+
+initScrubber();
+
+// ── Render ────────────────────────────────────────────────────────────────
+function render() {
+  renderQueue();
+  renderActiveDisplay();
+}
+
+function renderQueue() {
+  const qEl = document.getElementById('timer-queue');
+  const { timers, activeTimerIndex } = state;
+
+  if (!timers.length) {
+    qEl.innerHTML = '<div class="empty-queue">No timers yet.<br>Click + to add one.</div>';
+    return;
+  }
+
+  qEl.innerHTML = timers.map((t, i) => `
+    <div class="timer-item ${i === activeTimerIndex ? 'active' : ''} ${t.id === editingId ? 'editing' : ''}" data-id="${t.id}" data-index="${i}">
+      <div class="drag-handle" title="Drag to reorder">⠿</div>
+      <div class="item-info">
+        <div class="item-name">${esc(t.name)}</div>
+        <div class="item-duration">${fmt(t.duration)}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+        <span class="item-status status-${t.status}">${t.status}</span>
+        <div class="item-actions">
+          <button class="item-btn set-active-btn ${i === activeTimerIndex ? 'is-active' : ''}" data-id="${t.id}" title="Set as active timer on display">▶ Live</button>
+          <button class="item-btn move-btn" data-id="${t.id}" data-dir="up" title="Move up">↑</button>
+          <button class="item-btn move-btn" data-id="${t.id}" data-dir="down" title="Move down">↓</button>
+          <button class="item-btn del del-btn" data-id="${t.id}" title="Delete">✕</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  // Click row → open editor only (does NOT change active timer)
+  qEl.querySelectorAll('.timer-item').forEach(el => {
+    el.addEventListener('click', e => {
+      if (e.target.closest('button')) return;
+      openEditor(+el.dataset.id);
+    });
+  });
+
+  // Set Active button → make this the live display timer
+  qEl.querySelectorAll('.set-active-btn').forEach(btn => {
+    btn.addEventListener('click', () => send({ action: 'select', id: +btn.dataset.id }));
+  });
+
+  qEl.querySelectorAll('.del-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (confirm('Delete this timer?')) send({ action: 'delete', id: +btn.dataset.id });
+    });
+  });
+
+  qEl.querySelectorAll('.move-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = +btn.dataset.id;
+      const idx = state.timers.findIndex(t => t.id === id);
+      const dir = btn.dataset.dir;
+      const to = dir === 'up' ? idx - 1 : idx + 1;
+      if (to < 0 || to >= state.timers.length) return;
+      send({ action: 'reorder', from: idx, to });
+    });
+  });
+}
+
+function updateRemainingDisplay() {
+  const { timers } = state;
+  const field = document.getElementById('remaining-field');
+  const disp  = document.getElementById('f-remaining-display');
+  if (!field || !disp) return;
+
+  const editingTimer = editingId !== null ? timers.find(t => t.id === editingId) : null;
+
+  if (!editingTimer) {
+    field.style.display = 'none';
+    return;
+  }
+
+  // Only show if remaining differs from full duration AND this isn't the currently active timer
+  const isActive = state.activeTimerIndex !== null && state.timers[state.activeTimerIndex]?.id === editingTimer.id;
+  if (editingTimer.remaining === editingTimer.duration || isActive) {
+    field.style.display = 'none';
+    return;
+  }
+
+  field.style.display = '';
+  disp.textContent = fmt(editingTimer.remaining);
+
+  const cls = colorClass(editingTimer);
+  disp.style.color = cls === 'red' ? 'var(--red)' : cls === 'yellow' ? 'var(--yellow)' : 'var(--green)';
+}
+
+function renderActiveDisplay() {
+  const { timers, activeTimerIndex } = state;
+  const t = activeTimerIndex !== null ? timers[activeTimerIndex] : null;
+
+  const clock    = document.getElementById('active-clock');
+  const nameEl   = document.getElementById('active-name');
+  const bar      = document.getElementById('active-progress-bar');
+  const thumb    = document.getElementById('scrubber-thumb');
+  const playBtn  = document.getElementById('btn-play');
+
+  if (!t) {
+    clock.textContent = '--:--';
+    clock.className   = 'smooth';
+    nameEl.textContent = 'No timer selected';
+    bar.style.width    = '100%';
+    bar.className      = 'smooth';
+    thumb.style.left   = '100%';
+    playBtn.textContent = '▶';
+    return;
+  }
+
+  // Don't clobber UI while user is dragging
+  if (!isDragging) {
+    clock.textContent = fmt(t.remaining);
+    const pct = t.duration > 0 ? (t.remaining / t.duration) * 100 : 0;
+    bar.style.width  = `${pct}%`;
+    thumb.style.left = `${pct}%`;
+  }
+
+  nameEl.textContent = t.name;
+
+  const cls = colorClass(t);
+  // Preserve 'smooth' class alongside color class
+  clock.className = ['smooth', cls].filter(Boolean).join(' ');
+  bar.className   = ['smooth', cls].filter(Boolean).join(' ');
+
+  // Flash
+  const shouldFlash = t.status === 'running' && t.remaining <= t.flashAt && t.remaining > 0;
+  if (shouldFlash) {
+    clock.style.setProperty('--flash-rate', `${t.flashRate}ms`);
+    clock.classList.add('flash');
+  } else {
+    clock.classList.remove('flash');
+  }
+
+  playBtn.textContent = t.status === 'running' ? '⏸' : '▶';
+  updateRemainingDisplay();
+}
+
+// ── Editor ────────────────────────────────────────────────────────────────
+function initQuill() {
+  if (quill) return; // already initialized
+  quill = new Quill('#quill-editor', {
+    theme: 'snow',
+    placeholder: 'Add topics, talking points, cues…',
+    modules: {
+      toolbar: [
+        ['bold', 'italic', 'underline'],
+        [{ list: 'ordered' }, { list: 'bullet' }],
+        [{ indent: '-1' }, { indent: '+1' }],
+        ['clean']
+      ]
+    }
+  });
+
+  // Live sync — debounced 500ms after last keystroke
+  quill.on('text-change', () => {
+    if (suppressQuillEvent) return;
+    if (editingId === null) return;
+    clearTimeout(notesSyncTimeout);
+    const badge = document.getElementById('notes-live-badge');
+    notesSyncTimeout = setTimeout(() => {
+      send({ action: 'update_notes', id: editingId, message: quill.root.innerHTML });
+      badge.classList.add('visible');
+      setTimeout(() => badge.classList.remove('visible'), 1200);
+    }, 500);
+  });
+}
+
+function openEditor(id) {
+  const t = state.timers.find(t => t.id === id);
+  if (!t) return;
+  editingId = id;
+
+  // Re-render queue immediately so the blue highlight appears without waiting for next WS tick
+  renderQueue();
+
+  // Show the editor panel first so Quill has a visible container to attach to
+  document.getElementById('no-selection').style.display = 'none';
+  document.getElementById('editor').style.display = 'block';
+
+  // Init Quill lazily now that the container is visible
+  initQuill();
+
+  document.getElementById('f-name').value       = t.name;
+  document.getElementById('f-duration').value   = fmt(t.duration);
+  document.getElementById('f-yellow-at').value  = t.yellowAt;
+  document.getElementById('f-red-at').value     = t.redAt;
+  document.getElementById('f-flash-at').value   = t.flashAt;
+  document.getElementById('f-flash-rate').value = t.flashRate;
+  document.getElementById('editor-heading').textContent = `Edit: ${t.name}`;
+
+  // Show remaining time widget only if this timer is the active one
+  updateRemainingDisplay();
+
+  // Load notes into Quill without firing the live-sync event
+  suppressQuillEvent = true;
+  quill.root.innerHTML = t.message || '';
+  suppressQuillEvent = false;
+}
+
+function closeEditor() {
+  editingId = null;
+  renderQueue(); // Remove blue highlight immediately
+  document.getElementById('no-selection').style.display = '';
+  document.getElementById('editor').style.display = 'none';
+}
+
+document.getElementById('btn-cancel-edit').addEventListener('click', closeEditor);
+
+// ── Auto-save on field changes ────────────────────────────────────────────
+let autoSaveTimeout = null;
+
+function scheduleAutoSave() {
+  if (editingId === null) return;
+  clearTimeout(autoSaveTimeout);
+  autoSaveTimeout = setTimeout(() => doSave(false), 600);
+}
+
+function doSave(showToast = true) {
+  if (editingId === null) return;
+  const duration = parseDuration(document.getElementById('f-duration').value);
+  send({
+    action: 'update',
+    id: editingId,
+    timer: {
+      name:      document.getElementById('f-name').value.trim() || 'Timer',
+      duration,
+      message:   quill ? quill.root.innerHTML : '',
+      yellowAt:  +document.getElementById('f-yellow-at').value || 60,
+      redAt:     +document.getElementById('f-red-at').value || 30,
+      flashAt:   +document.getElementById('f-flash-at').value || 30,
+      flashRate: +document.getElementById('f-flash-rate').value || 1000,
+    }
+  });
+  if (showToast) toast('Timer saved!');
+}
+
+// Auto-save on name, duration, and threshold field changes
+['f-name', 'f-duration', 'f-yellow-at', 'f-red-at', 'f-flash-at', 'f-flash-rate'].forEach(id => {
+  document.getElementById(id).addEventListener('input', scheduleAutoSave);
+});
+
+// Save button still available for explicit saves
+document.getElementById('btn-save-edit').addEventListener('click', () => {
+  clearTimeout(autoSaveTimeout);
+  doSave(true);
+});
+
+// ── Add timer ─────────────────────────────────────────────────────────────
+let openEditorOnNextCreate = false;
+
+document.getElementById('btn-add').addEventListener('click', () => {
+  openEditorOnNextCreate = true;
+  send({ action: 'create', timer: { name: 'New Timer', duration: 300 } });
+});
+
+// ── Settings panel ────────────────────────────────────────────────────────
+function openSettings() {
+  const s = state.settings || {};
+  document.getElementById('s-duration').value   = fmt(+(s.default_duration  || 300));
+  document.getElementById('s-yellow-at').value  = s.default_yellow_at  || 60;
+  document.getElementById('s-red-at').value     = s.default_red_at     || 30;
+  document.getElementById('s-flash-at').value   = s.default_flash_at   || 30;
+  document.getElementById('s-flash-rate').value = s.default_flash_rate  || 1000;
+  autoStartEnabled = s.auto_start === 'true';
+  document.getElementById('toggle-track-auto-start').classList.toggle('on', autoStartEnabled);
+  document.getElementById('settings-panel').classList.add('open');
+  document.getElementById('settings-overlay').classList.add('open');
+}
+
+function closeSettings() {
+  document.getElementById('settings-panel').classList.remove('open');
+  document.getElementById('settings-overlay').classList.remove('open');
+}
+
+document.getElementById('btn-settings').addEventListener('click', openSettings);
+document.getElementById('btn-settings-close').addEventListener('click', closeSettings);
+document.getElementById('btn-settings-cancel').addEventListener('click', closeSettings);
+document.getElementById('settings-overlay').addEventListener('click', closeSettings);
+
+// Toggle — track state in a plain variable, don't rely on hidden checkbox
+let autoStartEnabled = false;
+
+document.getElementById('toggle-track-auto-start').addEventListener('click', () => {
+  autoStartEnabled = !autoStartEnabled;
+  document.getElementById('toggle-track-auto-start').classList.toggle('on', autoStartEnabled);
+});
+
+document.getElementById('btn-settings-save').addEventListener('click', () => {
+  const duration = parseDuration(document.getElementById('s-duration').value);
+  const newSettings = {
+    default_duration:   String(duration),
+    default_yellow_at:  String(+document.getElementById('s-yellow-at').value  || 60),
+    default_red_at:     String(+document.getElementById('s-red-at').value     || 30),
+    default_flash_at:   String(+document.getElementById('s-flash-at').value   || 30),
+    default_flash_rate: String(+document.getElementById('s-flash-rate').value || 1000),
+    auto_start:         autoStartEnabled ? 'true' : 'false',
+  };
+  send({ action: 'save_settings', settings: newSettings });
+  // Update local state immediately so reopening reflects the saved value
+  state.settings = { ...state.settings, ...newSettings };
+  toast('Defaults saved!');
+  closeSettings();
+});
+
+// ── Transport ─────────────────────────────────────────────────────────────
+document.getElementById('btn-play').addEventListener('click', () => {
+  const { timers, activeTimerIndex } = state;
+  if (activeTimerIndex === null) return;
+  const t = timers[activeTimerIndex];
+  if (!t) return;
+  send({ action: t.status === 'running' ? 'pause' : 'play' });
+});
+
+document.getElementById('btn-prev').addEventListener('click',  () => send({ action: 'prev' }));
+document.getElementById('btn-next').addEventListener('click',  () => send({ action: 'next' }));
+document.getElementById('btn-reset').addEventListener('click', () => send({ action: 'reset' }));
+document.getElementById('btn-add30').addEventListener('click', () => {
+  const { timers, activeTimerIndex } = state;
+  if (activeTimerIndex === null) return;
+  const t = timers[activeTimerIndex];
+  if (!t) return;
+  send({ action: 'scrub', remaining: Math.min(t.duration, t.remaining + 30) });
+});
+
+// ── Hotkeys ───────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  const tag = e.target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+  // Suppress hotkeys when focus is inside the Quill editor
+  if (e.target.closest && e.target.closest('.ql-editor')) return;
+  if (e.code === 'Space') { e.preventDefault(); document.getElementById('btn-play').click(); }
+  if (e.code === 'ArrowLeft')  send({ action: 'prev' });
+  if (e.code === 'ArrowRight') send({ action: 'next' });
+  if (e.code === 'KeyR')       send({ action: 'reset' });
+});
+
+// ── Util ──────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+services:
+  showclock:
+    build: .
+    container_name: showclock
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    environment:
+      - PORT=3000
+      - DB_PATH=/data/showclock.db
+    volumes:
+      - showclock_data:/data
+
+volumes:
+  showclock_data:
