@@ -3,7 +3,9 @@ name: Build and Push Docker Image
 on:
   push:
     branches:
-      - main
+      - dev
+  release:
+    types: [published]
   workflow_dispatch:
 
 jobs:
@@ -24,9 +26,21 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Generate tags
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/fuzzymistborn/showclock
+          tags: |
+            # Push to dev branch → :dev tag
+            type=raw,value=dev,enable=${{ github.event_name == 'push' }}
+            # New release → :latest and :v1.2.3
+            type=raw,value=latest,enable=${{ github.event_name == 'release' }}
+            type=semver,pattern={{version}},enable=${{ github.event_name == 'release' }}
+
       - name: Build and push
         uses: docker/build-push-action@v7
         with:
           context: .
           push: true
-          tags: ghcr.io/fuzzymistborn/showclock:latest
+          tags: ${{ steps.meta.outputs.tags }}
