@@ -3,7 +3,7 @@ name: Build and Push Docker Image
 on:
   push:
     branches:
-      - dev
+      - main
   release:
     types: [published]
   workflow_dispatch:
@@ -12,40 +12,12 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       packages: write
-      pull-requests: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Open PR from dev to main (on release only)
-        if: github.event_name == 'release'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          PR_URL=$(gh pr create \
-            --base main \
-            --head dev \
-            --title "Release ${{ github.event.release.tag_name }}" \
-            --body "Automated PR for release ${{ github.event.release.tag_name }}. Merges \`dev\` into \`main\`." \
-            2>/dev/null) || PR_URL=$(gh pr view --head dev --json url --jq .url 2>/dev/null)
-          if [ -n "$PR_URL" ]; then
-            gh pr merge "$PR_URL" --merge
-          fi
-
-      - name: Sync main back to dev
-        if: github.event_name == 'release'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git fetch origin
-          git checkout dev
-          git merge origin/main --ff-only
-          git push origin dev
 
       - name: Log in to GHCR
         uses: docker/login-action@v4
@@ -60,7 +32,9 @@ jobs:
         with:
           images: ghcr.io/fuzzymistborn/showclock
           tags: |
+            # Push to dev branch → :dev tag
             type=raw,value=dev,enable=${{ github.event_name == 'push' }}
+            # New release → :latest and :v1.2.3
             type=raw,value=latest,enable=${{ github.event_name == 'release' }}
             type=semver,pattern={{version}},enable=${{ github.event_name == 'release' }}
 
