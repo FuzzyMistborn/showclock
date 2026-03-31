@@ -653,25 +653,28 @@ resolveIdentity().then(name => {
   if (name && !myName) {
     myName = name;
     localStorage.setItem('showclock_name', myName);
-    // Hide change name — Tailscale identity is authoritative
-    document.getElementById('changename-btn').style.display = 'none';
-  } else if (myName) {
-    // Show change name only if name was manually entered
+  }
+  // Always show change name if we have any name
+  if (myName) {
     document.getElementById('changename-btn').style.display = '';
   }
 });
 
 document.getElementById('changename-btn').addEventListener('click', () => {
-  // If hand is raised, lower it first
   if (myHandRaised && myName) {
     ws.send(JSON.stringify({ action: 'lower_hand', name: myName }));
   }
+  const previousName = myName;
   myName = null;
   localStorage.removeItem('showclock_name');
-  document.getElementById('changename-btn').style.display = 'none';
   document.getElementById('name-modal').classList.add('open');
-  setTimeout(() => document.getElementById('name-input').value = '', 10);
-  setTimeout(() => document.getElementById('name-input').focus(), 50);
+  // Pre-fill with current name so they can edit rather than retype
+  setTimeout(() => {
+    const inp = document.getElementById('name-input');
+    inp.value = previousName || '';
+    inp.focus();
+    inp.select();
+  }, 50);
 });
 
 // ── WebSocket ────────────────────────────────────────────────────────────
