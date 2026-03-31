@@ -14,6 +14,7 @@ jobs:
     permissions:
       contents: write
       packages: write
+      pull-requests: write
 
     steps:
       - name: Checkout
@@ -26,12 +27,15 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh pr create \
+          PR_URL=$(gh pr create \
             --base main \
             --head dev \
             --title "Release ${{ github.event.release.tag_name }}" \
             --body "Automated PR for release ${{ github.event.release.tag_name }}. Merges \`dev\` into \`main\`." \
-            || echo "PR already exists or branches are already in sync"
+            2>/dev/null) || PR_URL=$(gh pr view --base main --head dev --json url --jq .url 2>/dev/null)
+          if [ -n "$PR_URL" ]; then
+            gh pr merge "$PR_URL" --auto --merge
+          fi
 
       - name: Log in to GHCR
         uses: docker/login-action@v4
