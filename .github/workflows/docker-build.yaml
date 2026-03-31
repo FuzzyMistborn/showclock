@@ -12,12 +12,30 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
+      pull-requests: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Open PR from dev to main (on release only)
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_URL=$(gh pr create \
+            --base main \
+            --head dev \
+            --title "Release ${{ github.event.release.tag_name }}" \
+            --body "Automated PR for release ${{ github.event.release.tag_name }}. Merges \`dev\` into \`main\`." \
+            2>/dev/null) || PR_URL=$(gh pr view --base main --head dev --json url --jq .url 2>/dev/null)
+          if [ -n "$PR_URL" ]; then
+            gh pr merge "$PR_URL" --auto --merge
+          fi
 
       - name: Log in to GHCR
         uses: docker/login-action@v4
@@ -32,9 +50,7 @@ jobs:
         with:
           images: ghcr.io/fuzzymistborn/showclock
           tags: |
-            # Push to dev branch → :dev tag
             type=raw,value=dev,enable=${{ github.event_name == 'push' }}
-            # New release → :latest and :v1.2.3
             type=raw,value=latest,enable=${{ github.event_name == 'release' }}
             type=semver,pattern={{version}},enable=${{ github.event_name == 'release' }}
 
