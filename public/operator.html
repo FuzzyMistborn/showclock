@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ShowClock — Operator</title>
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.snow.min.css" rel="stylesheet">
@@ -617,6 +618,54 @@
     font-size: 13px;
   }
 
+  /* ── Hand-raise panel ── */
+  #handraise-panel {
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+
+  #handraise-panel .panel-header { padding: 10px 16px 8px; }
+
+  #handraise-queue-list {
+    padding: 4px 8px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    max-height: 180px;
+    overflow-y: auto;
+  }
+
+  .op-handraise-entry {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 12px;
+  }
+
+  .op-handraise-pos {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    width: 16px;
+    flex-shrink: 0;
+  }
+
+  .op-handraise-entry:first-child .op-handraise-pos { color: var(--green); }
+  .op-handraise-name { flex: 1; font-weight: 600; color: var(--text); }
+
+  .handraise-empty {
+    font-size: 12px;
+    color: var(--muted);
+    padding: 8px 10px;
+    text-align: center;
+  }
+
   /* ── Settings slide-out panel ── */
   #settings-overlay {
     position: fixed;
@@ -722,6 +771,179 @@
   .item-btn.set-active-btn:hover { background: var(--surface); color: var(--text); border-color: var(--green); }
   .item-btn.set-active-btn.is-active { background: #0d1f12; color: var(--green); border-color: var(--green); }
 
+  /* ── Subtimers ── */
+  .subtimer-list {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 4px;
+  }
+
+  .subtimer-row {
+    display: grid;
+    grid-template-columns: 16px 1fr auto auto;
+    gap: 8px;
+    align-items: center;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 10px;
+    position: relative;
+  }
+
+  .subtimer-row.active-sub {
+    border-color: var(--green);
+    background: #0d1f12;
+  }
+
+  .subtimer-row .sub-drag {
+    color: var(--muted);
+    font-size: 11px;
+    cursor: grab;
+    text-align: center;
+    user-select: none;
+  }
+
+  .subtimer-row .sub-drag:active { cursor: grabbing; }
+
+  .subtimer-row.drag-over-top    { border-top: 2px solid var(--accent); }
+  .subtimer-row.drag-over-bottom { border-bottom: 2px solid var(--accent); }
+  .subtimer-row.dragging         { opacity: 0.4; }
+
+  .subtimer-row .sub-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .subtimer-row .sub-duration {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .subtimer-row .sub-actions {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+  }
+
+  .sub-live-btn {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .sub-live-btn:hover   { border-color: var(--green); color: var(--green); }
+  .sub-live-btn.is-active { background: #0d1f12; color: var(--green); border-color: var(--green); }
+
+  .queue-subtimer-toggle {
+    font-size: 10px;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 2px 4px;
+    border: none;
+    background: none;
+    border-radius: 4px;
+    transition: color 0.15s;
+  }
+  .queue-subtimer-toggle:hover { color: var(--text); }
+
+  .queue-sub-list {
+    padding-left: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-top: 2px;
+  }
+
+  .queue-sub-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+
+  .queue-sub-item:hover { border-color: var(--accent); }
+
+  .queue-sub-item.active-sub {
+    border-color: var(--green);
+    background: #0d1f12;
+  }
+
+  .queue-sub-item .sub-item-name {
+    flex: 1;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text);
+  }
+
+  .queue-sub-item .sub-item-dur {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .sub-status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--muted);
+    flex-shrink: 0;
+  }
+  .sub-status-dot.running  { background: var(--green); }
+  .sub-status-dot.finished { background: var(--red); }
+  .sub-status-dot.paused   { background: var(--yellow); }
+
+  /* subtimer editor section */
+  .subtimer-editor-section {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .subtimer-editor-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .subtimer-editor-header span {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    flex: 1;
+  }
+
+  .sub-total-display {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .sub-total-display.mismatch { color: var(--red); }
+  .sub-total-display.match    { color: var(--green); }
+
   /* ── Quill notes editor ── */
   .notes-wrap {
     grid-column: 1 / -1;
@@ -799,7 +1021,8 @@
 <body>
 
 <header>
-  <h1>⏱ ShowClock</h1>
+  <img src="/showclock.png" style="height:24px;width:24px;border-radius:4px;" alt="ShowClock">
+  <h1>ShowClock</h1>
   <span class="pill">OPERATOR</span>
   <div class="spacer"></div>
   <div class="hotkey-hint">
@@ -817,6 +1040,16 @@
     <button class="btn-icon" id="btn-add" title="Add timer">+</button>
   </div>
   <div id="timer-queue"></div>
+
+  <div id="handraise-panel">
+    <div class="panel-header">
+      <h2>✋ Hand Queue</h2>
+      <button class="btn-icon" id="btn-clear-queue" title="Clear all" style="font-size:12px;">✕</button>
+    </div>
+    <div id="handraise-queue-list">
+      <div class="handraise-empty">No hands raised</div>
+    </div>
+  </div>
 </div>
 
 <!-- Main -->
@@ -828,6 +1061,7 @@
       <div id="active-label">ACTIVE TIMER</div>
       <div id="active-clock">--:--</div>
       <div id="active-name">No timer selected</div>
+      <div id="active-total" style="font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:2px;"></div>
     </div>
 
     <div id="active-progress-wrap">
@@ -921,6 +1155,17 @@
           <div class="hint">e.g. 500 = fast, 1000 = normal</div>
         </div>
 
+        <hr class="section-divider">
+
+        <div class="subtimer-editor-section">
+          <div class="subtimer-editor-header">
+            <span>Subtimers</span>
+            <span class="sub-total-display" id="sub-total-display"></span>
+            <button class="btn-icon" id="btn-add-subtimer" title="Add subtimer" style="width:24px;height:24px;font-size:14px;">+</button>
+          </div>
+          <div id="subtimer-list"></div>
+        </div>
+
         <div class="editor-actions">
           <button class="btn btn-ghost" id="btn-cancel-edit">Cancel</button>
           <button class="btn btn-primary" id="btn-save-edit">Save Changes</button>
@@ -989,6 +1234,19 @@
       </label>
       <div class="hint">Automatically start the timer when clicking ▶ Live, Next, or Prev</div>
     </div>
+
+    <div class="field">
+      <label style="flex-direction:row;align-items:center;gap:10px;cursor:pointer;">
+        <div class="toggle-wrap">
+          <input type="checkbox" id="s-subtimers-expanded" style="display:none;">
+          <div class="toggle-track" id="toggle-track-subtimers-expanded">
+            <div class="toggle-thumb"></div>
+          </div>
+        </div>
+        Expand subtimers by default
+      </label>
+      <div class="hint">Automatically expand subtimers in the queue on page load</div>
+    </div>
   </div>
   <div id="settings-footer">
     <button class="btn btn-ghost" id="btn-settings-cancel">Cancel</button>
@@ -999,7 +1257,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.min.js"></script>
 <script>
 // ── State ─────────────────────────────────────────────────────────────────
-let state = { timers: [], activeTimerIndex: null, settings: {} };
+let state = { timers: [], activeTimerIndex: null, activeSubtimerIndex: null, settings: {} };
 let editingId = null;
 let flashInterval = null;
 let quill = null;
@@ -1009,15 +1267,56 @@ let suppressQuillEvent = false;
 // ── WebSocket ─────────────────────────────────────────────────────────────
 const ws = new WebSocket(`ws://${location.host}`);
 ws.addEventListener('message', e => {
-  const msg = JSON.parse(e.data);
-  if (msg.type === 'state' || msg.type === 'tick') {
-    state = { timers: msg.timers, activeTimerIndex: msg.activeTimerIndex, settings: msg.settings || {} };
-    render();
-    if (openEditorOnNextCreate && msg.type === 'state' && state.timers.length > 0) {
-      openEditorOnNextCreate = false;
-      const last = state.timers[state.timers.length - 1];
-      openEditor(last.id);
+  try {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'state' || msg.type === 'tick') {
+      state = { timers: msg.timers, activeTimerIndex: msg.activeTimerIndex, activeSubtimerIndex: msg.activeSubtimerIndex ?? null, settings: msg.settings || {} };
+      if (msg.type === 'state') {        // On first load, apply the default expand setting
+        if (!expandedTimersInitialized) {
+          expandedTimersInitialized = true;
+          if (state.settings.subtimers_expanded !== 'false') {
+            state.timers.forEach(t => { if (t.subtimers && t.subtimers.length > 0) expandedTimers.add(t.id); });
+          }
+        }
+        renderQueue();
+        if (editingId !== null) {
+          const focused = document.activeElement;
+          const isInSubEditor = focused && (focused.classList.contains('sub-name-input') || focused.classList.contains('sub-dur-input'));
+          if (!isInSubEditor) renderSubtimerEditor(editingId);
+        }
+        if (openEditorOnNextCreate && state.timers.length > 0) {
+          openEditorOnNextCreate = false;
+          const last = state.timers[state.timers.length - 1];
+          openEditor(last.id);
+        }
+      } else {
+        const qEl = document.getElementById('timer-queue');
+        state.timers.forEach((t, i) => {
+          const row = qEl.querySelector(`.timer-item[data-index="${i}"]`);
+          if (!row) return;
+          const badge = row.querySelector('.item-status');
+          if (badge) { badge.textContent = t.status; badge.className = `item-status status-${t.status}`; }
+          if (expandedTimers.has(t.id)) {
+            t.subtimers.forEach((s, si) => {
+              const subRow = qEl.querySelector(`.queue-sub-item[data-sub-index="${si}"][data-parent-id="${t.id}"]`);
+              if (!subRow) return;
+              const dot = subRow.querySelector('.sub-status-dot');
+              if (dot) dot.className = `sub-status-dot ${s.status}`;
+              // Update active-sub highlight based on current activeSubtimerIndex
+              const isActive = i === state.activeTimerIndex && si === state.activeSubtimerIndex;
+              subRow.classList.toggle('active-sub', isActive);
+              const liveBtn = subRow.querySelector('.sub-live-btn');
+              if (liveBtn) liveBtn.classList.toggle('is-active', isActive);
+            });
+          }
+        });
+      }
+      renderActiveDisplay();
+    } else if (msg.type === 'hand_queue') {
+      renderHandQueue(msg.queue || []);
     }
+  } catch (err) {
+    console.error('WS message handler error:', err);
   }
 });
 
@@ -1134,26 +1433,49 @@ function render() {
   renderQueue();
   renderActiveDisplay();
 }
+// Track which timer rows have subtimers expanded
+let expandedTimersInitialized = false;
+const expandedTimers = new Set();
 
 function renderQueue() {
   const qEl = document.getElementById('timer-queue');
-  const { timers, activeTimerIndex } = state;
+  const { timers, activeTimerIndex, activeSubtimerIndex } = state;
 
   if (!timers.length) {
     qEl.innerHTML = '<div class="empty-queue">No timers yet.<br>Click + to add one.</div>';
     return;
   }
 
-  qEl.innerHTML = timers.map((t, i) => `
+  qEl.innerHTML = timers.map((t, i) => {
+    const hasSubs = t.subtimers && t.subtimers.length > 0;
+    const isExpanded = expandedTimers.has(t.id);
+    const activeSub = (i === activeTimerIndex && activeSubtimerIndex !== null)
+      ? t.subtimers[activeSubtimerIndex] : null;
+
+    const subListHtml = hasSubs && isExpanded ? `
+      <div class="queue-sub-list" data-parent-id="${t.id}">
+        ${t.subtimers.map((s, si) => {
+          const isActiveSub = i === activeTimerIndex && activeSubtimerIndex === si;
+          return `<div class="queue-sub-item ${isActiveSub ? 'active-sub' : ''}" data-parent-id="${t.id}" data-sub-id="${s.id}" data-sub-index="${si}">
+            <div class="sub-status-dot ${s.status}"></div>
+            <span class="sub-item-name">${esc(s.name)}</span>
+            <span class="sub-item-dur">${fmt(s.duration)}</span>
+            <button class="sub-live-btn ${isActiveSub ? 'is-active' : ''}" data-parent-id="${t.id}" data-sub-id="${s.id}" title="Jump to this subtimer">▶</button>
+          </div>`;
+        }).join('')}
+      </div>` : '';
+
+    return `
     <div class="timer-item ${i === activeTimerIndex ? 'active' : ''} ${t.id === editingId ? 'editing' : ''}" data-id="${t.id}" data-index="${i}" draggable="false">
       <div class="drag-handle" title="Drag to reorder" draggable="true" data-index="${i}">⠿</div>
       <div class="item-info">
-        <div class="item-name">${esc(t.name)}</div>
+        <div class="item-name">${esc(t.name)}${activeSub ? `<span style="color:var(--muted);font-weight:400;font-size:11px;margin-left:6px;">· ${esc(activeSub.name)}</span>` : ''}</div>
         <div class="item-duration">${fmt(t.duration)}</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
         <span class="item-status status-${t.status}">${t.status}</span>
         <div class="item-actions">
+          ${hasSubs ? `<button class="queue-subtimer-toggle" data-id="${t.id}" title="${isExpanded ? 'Collapse' : 'Expand'} subtimers">${isExpanded ? '▲' : '▼'} ${t.subtimers.length}</button>` : ''}
           <button class="item-btn set-active-btn ${i === activeTimerIndex ? 'is-active' : ''}" data-id="${t.id}" title="Set as active timer on display">▶ Live</button>
           <button class="item-btn move-btn" data-id="${t.id}" data-dir="up" title="Move up">↑</button>
           <button class="item-btn move-btn" data-id="${t.id}" data-dir="down" title="Move down">↓</button>
@@ -1161,7 +1483,8 @@ function renderQueue() {
         </div>
       </div>
     </div>
-  `).join('');
+    ${subListHtml}`;
+  }).join('');
 
   // Click row → open editor only (does NOT change active timer)
   qEl.querySelectorAll('.timer-item').forEach(el => {
@@ -1193,7 +1516,32 @@ function renderQueue() {
     });
   });
 
-  // ── Drag-and-drop reorder ──────────────────────────────────────────────
+  // Subtimer expand/collapse toggle
+  qEl.querySelectorAll('.queue-subtimer-toggle').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const id = +btn.dataset.id;
+      if (expandedTimers.has(id)) expandedTimers.delete(id);
+      else expandedTimers.add(id);
+      renderQueue();
+    });
+  });
+
+  // Jump to subtimer
+  qEl.querySelectorAll('.sub-live-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      send({ action: 'select_subtimer', parentId: +btn.dataset.parentId, id: +btn.dataset.subId });
+    });
+  });
+
+  // Click subtimer row → jump to it
+  qEl.querySelectorAll('.queue-sub-item').forEach(el => {
+    el.addEventListener('click', e => {
+      if (e.target.closest('button')) return;
+      send({ action: 'select_subtimer', parentId: +el.dataset.parentId, id: +el.dataset.subId });
+    });
+  });
   let dragFromIndex = null;
 
   qEl.querySelectorAll('.drag-handle').forEach(handle => {
@@ -1268,7 +1616,8 @@ function updateRemainingDisplay() {
 }
 
 function renderActiveDisplay() {
-  const { timers, activeTimerIndex } = state;
+  try {
+  const { timers, activeTimerIndex, activeSubtimerIndex } = state;
   const t = activeTimerIndex !== null ? timers[activeTimerIndex] : null;
 
   const clock    = document.getElementById('active-clock');
@@ -1288,25 +1637,42 @@ function renderActiveDisplay() {
     return;
   }
 
-  // Don't clobber UI while user is dragging
+  // Define activeSub first — used throughout this function
+  const activeSub = (activeSubtimerIndex !== null && t.subtimers && t.subtimers[activeSubtimerIndex])
+    ? t.subtimers[activeSubtimerIndex] : null;
+
   if (!isDragging) {
-    clock.textContent = fmt(t.remaining);
-    const pct = t.duration > 0 ? (t.remaining / t.duration) * 100 : 0;
+    const displayRemaining = activeSub ? activeSub.remaining : t.remaining;
+    const displayDuration  = activeSub ? activeSub.duration  : t.duration;
+    clock.textContent = fmt(displayRemaining);
+    const pct = displayDuration > 0 ? (displayRemaining / displayDuration) * 100 : 0;
     bar.style.width  = `${pct}%`;
     thumb.style.left = `${pct}%`;
   }
 
-  nameEl.textContent = t.name;
+  nameEl.textContent = activeSub ? `${t.name}  ·  ${activeSub.name}` : t.name;
 
-  const cls = colorClass(t);
-  // Preserve 'smooth' class alongside color class
+  // Show total parent remaining when a subtimer is active
+  const totalEl = document.getElementById('active-total');
+  if (totalEl) {
+    if (activeSub) {
+      const parentRemaining = t.subtimers.reduce((sum, s) => sum + s.remaining, 0);
+      totalEl.textContent = `Total: ${fmt(parentRemaining)}`;
+    } else {
+      totalEl.textContent = '';
+    }
+  }
+
+  // Use active subtimer for color thresholds if one is running
+  const colorTarget = activeSub || t;
+  const cls = colorClass(colorTarget);
   clock.className = ['smooth', cls].filter(Boolean).join(' ');
   bar.className   = ['smooth', cls].filter(Boolean).join(' ');
 
-  // Flash
-  const shouldFlash = t.status === 'running' && t.remaining <= t.flashAt && t.remaining > 0;
+  const flashTarget = activeSub || t;
+  const shouldFlash = (t.status === 'running') && flashTarget.remaining <= flashTarget.flashAt && flashTarget.remaining > 0;
   if (shouldFlash) {
-    clock.style.setProperty('--flash-rate', `${t.flashRate}ms`);
+    clock.style.setProperty('--flash-rate', `${flashTarget.flashRate}ms`);
     clock.classList.add('flash');
   } else {
     clock.classList.remove('flash');
@@ -1314,8 +1680,8 @@ function renderActiveDisplay() {
 
   playBtn.textContent = t.status === 'running' ? '⏸' : '▶';
   updateRemainingDisplay();
+  } catch (err) { console.error('renderActiveDisplay error:', err); }
 }
-
 // ── Editor ────────────────────────────────────────────────────────────────
 function initQuill() {
   if (quill) return; // already initialized
@@ -1351,31 +1717,154 @@ function openEditor(id) {
   if (!t) return;
   editingId = id;
 
-  // Re-render queue immediately so the blue highlight appears without waiting for next WS tick
   renderQueue();
 
-  // Show the editor panel first so Quill has a visible container to attach to
   document.getElementById('no-selection').style.display = 'none';
   document.getElementById('editor').style.display = 'block';
 
-  // Init Quill lazily now that the container is visible
   initQuill();
 
   document.getElementById('f-name').value       = t.name;
   document.getElementById('f-duration').value   = fmt(t.duration);
+  document.getElementById('f-duration').readOnly = t.subtimers && t.subtimers.length > 0;
+  document.getElementById('f-duration').style.opacity = (t.subtimers && t.subtimers.length > 0) ? '0.5' : '1';
   document.getElementById('f-yellow-at').value  = t.yellowAt;
   document.getElementById('f-red-at').value     = t.redAt;
   document.getElementById('f-flash-at').value   = t.flashAt;
   document.getElementById('f-flash-rate').value = t.flashRate;
   document.getElementById('editor-heading').textContent = `Edit: ${t.name}`;
 
-  // Show remaining time widget only if this timer is the active one
   updateRemainingDisplay();
+  renderSubtimerEditor(id);
 
-  // Load notes into Quill without firing the live-sync event
   suppressQuillEvent = true;
   quill.root.innerHTML = t.message || '';
   suppressQuillEvent = false;
+}
+
+function renderSubtimerEditor(parentId) {
+  try {
+    const t = state.timers.find(t => t.id === parentId);
+    const listEl  = document.getElementById('subtimer-list');
+    const totalEl = document.getElementById('sub-total-display');
+    if (!t || !listEl || !totalEl) return;
+
+    const subs = t.subtimers || [];
+    const total = subs.reduce((s, x) => s + x.duration, 0);
+    const match = subs.length === 0 || total === t.duration;
+
+  if (subs.length === 0) {
+    totalEl.textContent = '';
+    listEl.innerHTML = `<div style="font-size:12px;color:var(--muted);padding:8px 0;">No subtimers. Click + to add one.</div>`;
+  } else {
+    totalEl.textContent = `${fmt(total)} / ${fmt(t.duration)}`;
+    totalEl.className = 'sub-total-display ' + (match ? 'match' : 'mismatch');
+
+    listEl.innerHTML = subs.map((s, si) => `
+      <div class="subtimer-row" data-sub-id="${s.id}" data-sub-index="${si}" data-parent-id="${parentId}">
+        <div class="sub-drag" draggable="true" data-sub-index="${si}" data-parent-id="${parentId}">⠿</div>
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:0;">
+          <input class="sub-name-input" data-sub-id="${s.id}" data-parent-id="${parentId}"
+            style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:12px;padding:4px 8px;width:100%;"
+            value="${esc(s.name)}" placeholder="Part name">
+          <div style="display:flex;gap:6px;align-items:center;">
+            <input class="sub-dur-input" data-sub-id="${s.id}" data-parent-id="${parentId}"
+              style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:12px;padding:4px 8px;width:80px;"
+              value="${fmt(s.duration)}" placeholder="mm:ss">
+            <span style="font-size:10px;color:var(--muted);">Y:${s.yellowAt}s R:${s.redAt}s</span>
+          </div>
+        </div>
+        <button class="sub-live-btn-edit ${state.activeTimerIndex !== null && state.timers[state.activeTimerIndex]?.id === parentId && state.activeSubtimerIndex === si ? 'is-active' : ''}"
+          data-sub-id="${s.id}" data-parent-id="${parentId}" title="Jump to this subtimer"
+          style="font-size:10px;font-weight:700;padding:2px 6px;border:1px solid var(--border);border-radius:4px;background:none;color:var(--muted);cursor:pointer;">▶</button>
+        <button class="sub-del-btn item-btn del"
+          data-sub-id="${s.id}" data-parent-id="${parentId}" title="Delete subtimer"
+          style="font-size:13px;">✕</button>
+      </div>
+    `).join('');
+  }
+
+  // Wire up subtimer inputs
+  listEl.querySelectorAll('.sub-name-input').forEach(inp => {
+    inp.addEventListener('input', () => scheduleSubSave(+inp.dataset.parentId, +inp.dataset.subId));
+  });
+  listEl.querySelectorAll('.sub-dur-input').forEach(inp => {
+    inp.addEventListener('input', () => scheduleSubSave(+inp.dataset.parentId, +inp.dataset.subId));
+  });
+  listEl.querySelectorAll('.sub-del-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      send({ action: 'delete_subtimer', parentId: +btn.dataset.parentId, id: +btn.dataset.subId });
+    });
+  });
+  listEl.querySelectorAll('.sub-live-btn-edit').forEach(btn => {
+    btn.addEventListener('click', () => {
+      send({ action: 'select_subtimer', parentId: +btn.dataset.parentId, id: +btn.dataset.subId });
+    });
+  });
+
+  // Sub drag-and-drop
+  let subDragFrom = null;
+  listEl.querySelectorAll('.sub-drag').forEach(handle => {
+    handle.addEventListener('dragstart', e => {
+      subDragFrom = +handle.dataset.subIndex;
+      handle.closest('.subtimer-row').classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    handle.addEventListener('dragend', () => {
+      subDragFrom = null;
+      listEl.querySelectorAll('.subtimer-row').forEach(r => r.classList.remove('dragging','drag-over-top','drag-over-bottom'));
+    });
+  });
+  listEl.querySelectorAll('.subtimer-row').forEach(row => {
+    row.addEventListener('dragover', e => {
+      e.preventDefault();
+      if (subDragFrom === null) return;
+      const toIdx = +row.dataset.subIndex;
+      if (toIdx === subDragFrom) return;
+      const rect = row.getBoundingClientRect();
+      listEl.querySelectorAll('.subtimer-row').forEach(r => r.classList.remove('drag-over-top','drag-over-bottom'));
+      row.classList.add(e.clientY < rect.top + rect.height / 2 ? 'drag-over-top' : 'drag-over-bottom');
+    });
+    row.addEventListener('dragleave', () => row.classList.remove('drag-over-top','drag-over-bottom'));
+    row.addEventListener('drop', e => {
+      e.preventDefault();
+      if (subDragFrom === null) return;
+      const toIdx = +row.dataset.subIndex;
+      row.classList.remove('drag-over-top','drag-over-bottom');
+      if (toIdx === subDragFrom) return;
+      send({ action: 'reorder_subtimer', parentId, from: subDragFrom, to: toIdx });
+      subDragFrom = null;
+    });
+  });
+  } catch (err) {
+    console.error('renderSubtimerEditor error:', err);
+  }
+}
+
+let subSaveTimeouts = {};
+
+function scheduleSubSave(parentId, subId) {
+  const key = `${parentId}-${subId}`;
+  clearTimeout(subSaveTimeouts[key]);
+  subSaveTimeouts[key] = setTimeout(() => {
+    const listEl = document.getElementById('subtimer-list');
+    if (!listEl) return;
+    const nameInp = listEl.querySelector(`.sub-name-input[data-sub-id="${subId}"]`);
+    const durInp  = listEl.querySelector(`.sub-dur-input[data-sub-id="${subId}"]`);
+    if (!nameInp || !durInp) return;
+    const newName = nameInp.value.trim() || 'Part';
+    const newDuration = parseDuration(durInp.value);
+    // Check against current state to avoid re-sending unchanged values
+    const t = state.timers.find(t => t.id === parentId);
+    const s = t && t.subtimers.find(s => s.id === subId);
+    if (s && s.name === newName && s.duration === newDuration) return;
+    send({
+      action: 'update_subtimer',
+      parentId,
+      id: subId,
+      subtimer: { name: newName, duration: newDuration }
+    });
+  }, 600);
 }
 
 function closeEditor() {
@@ -1444,6 +1933,8 @@ function openSettings() {
   document.getElementById('s-flash-rate').value = s.default_flash_rate  || 1000;
   autoStartEnabled = s.auto_start === 'true';
   document.getElementById('toggle-track-auto-start').classList.toggle('on', autoStartEnabled);
+  subtimersExpandedEnabled = s.subtimers_expanded !== 'false'; // default true
+  document.getElementById('toggle-track-subtimers-expanded').classList.toggle('on', subtimersExpandedEnabled);
   document.getElementById('settings-panel').classList.add('open');
   document.getElementById('settings-overlay').classList.add('open');
 }
@@ -1460,10 +1951,16 @@ document.getElementById('settings-overlay').addEventListener('click', closeSetti
 
 // Toggle — track state in a plain variable, don't rely on hidden checkbox
 let autoStartEnabled = false;
+let subtimersExpandedEnabled = true;
 
 document.getElementById('toggle-track-auto-start').addEventListener('click', () => {
   autoStartEnabled = !autoStartEnabled;
   document.getElementById('toggle-track-auto-start').classList.toggle('on', autoStartEnabled);
+});
+
+document.getElementById('toggle-track-subtimers-expanded').addEventListener('click', () => {
+  subtimersExpandedEnabled = !subtimersExpandedEnabled;
+  document.getElementById('toggle-track-subtimers-expanded').classList.toggle('on', subtimersExpandedEnabled);
 });
 
 document.getElementById('btn-settings-save').addEventListener('click', () => {
@@ -1474,13 +1971,39 @@ document.getElementById('btn-settings-save').addEventListener('click', () => {
     default_red_at:     String(+document.getElementById('s-red-at').value     || 30),
     default_flash_at:   String(+document.getElementById('s-flash-at').value   || 30),
     default_flash_rate: String(+document.getElementById('s-flash-rate').value || 1000),
-    auto_start:         autoStartEnabled ? 'true' : 'false',
+    auto_start:           autoStartEnabled ? 'true' : 'false',
+    subtimers_expanded:   subtimersExpandedEnabled ? 'true' : 'false',
   };
   send({ action: 'save_settings', settings: newSettings });
   // Update local state immediately so reopening reflects the saved value
   state.settings = { ...state.settings, ...newSettings };
   toast('Defaults saved!');
   closeSettings();
+});
+
+// ── Hand-raise queue ──────────────────────────────────────────────────────
+function renderHandQueue(queue) {
+  const listEl = document.getElementById('handraise-queue-list');
+  if (!listEl) return;
+  if (!queue.length) {
+    listEl.innerHTML = '<div class="handraise-empty">No hands raised</div>';
+    return;
+  }
+  listEl.innerHTML = queue.map((e, i) => `
+    <div class="op-handraise-entry">
+      <span class="op-handraise-pos">${i + 1}</span>
+      <span class="op-handraise-name">${esc(e.name)}</span>
+      <button class="item-btn del remove-hand-btn" data-name="${esc(e.name)}" title="Remove">✕</button>
+    </div>
+  `).join('');
+
+  listEl.querySelectorAll('.remove-hand-btn').forEach(btn => {
+    btn.addEventListener('click', () => send({ action: 'lower_hand', name: btn.dataset.name }));
+  });
+}
+
+document.getElementById('btn-clear-queue').addEventListener('click', () => {
+  send({ action: 'clear_queue' });
 });
 
 // ── Transport ─────────────────────────────────────────────────────────────
@@ -1495,12 +2018,16 @@ document.getElementById('btn-play').addEventListener('click', () => {
 document.getElementById('btn-prev').addEventListener('click',  () => send({ action: 'prev' }));
 document.getElementById('btn-next').addEventListener('click',  () => send({ action: 'next' }));
 document.getElementById('btn-reset').addEventListener('click', () => send({ action: 'reset' }));
+// Use event delegation for btn-add-subtimer since it may be re-rendered
+document.getElementById('editor-area').addEventListener('click', e => {
+  if (!e.target.closest('#btn-add-subtimer')) return;
+  if (editingId === null) return;
+  expandedTimers.add(editingId); // auto-expand the parent in the queue
+  send({ action: 'create_subtimer', parentId: editingId, subtimer: { name: 'Part', duration: 60 } });
+});
+
 document.getElementById('btn-add30').addEventListener('click', () => {
-  const { timers, activeTimerIndex } = state;
-  if (activeTimerIndex === null) return;
-  const t = timers[activeTimerIndex];
-  if (!t) return;
-  send({ action: 'scrub', remaining: Math.min(t.duration, t.remaining + 30) });
+  send({ action: 'add30' });
 });
 
 // ── Hotkeys ───────────────────────────────────────────────────────────────

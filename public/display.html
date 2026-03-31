@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ShowClock — Display</title>
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;700;800&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
@@ -146,6 +147,18 @@
     border-color: color-mix(in srgb, var(--red) 30%, transparent);
   }
 
+  /* ── Total time remaining (shown when subtimers active) ── */
+  #total-remaining {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: clamp(13px, 1.6vw, 20px);
+    font-weight: 400;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+    opacity: 0;
+    transition: opacity 0.4s;
+  }
+  #total-remaining.visible { opacity: 1; }
+
   /* ── Notes panel ── */
   #notes-panel {
     width: 100%;
@@ -221,7 +234,36 @@
 
   #notes-panel p + p { margin-top: 4px; }
 
-  /* ── Progress bar ── */
+  /* ── Parent timer label (shown when subtimer is active) ── */
+  #parent-label {
+    font-size: clamp(14px, 2vw, 24px);
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    text-align: center;
+    opacity: 0;
+    transition: opacity 0.4s;
+  }
+
+  #parent-label.visible { opacity: 1; }
+
+  /* ── Overall progress bar (thin, above main bar) ── */
+  #overall-progress-wrap {
+    position: fixed;
+    bottom: 10px;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: transparent;
+  }
+
+  #overall-progress-bar {
+    height: 100%;
+    background: rgba(255,255,255,0.2);
+    width: 100%;
+    transition: width 0.9s linear;
+  }
   #progress-wrap {
     position: fixed;
     bottom: 0;
@@ -300,6 +342,154 @@
   }
 
   #conn-dot.connected { background: var(--green); }
+
+  /* ── Hand-raise ── */
+  #handraise-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 40px;
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(13px, 1.6vw, 18px);
+    font-weight: 700;
+    padding: 10px 22px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: background 0.2s, border-color 0.2s, transform 0.15s;
+  }
+  #handraise-btn:hover { border-color: var(--accent); transform: translateY(-2px); }
+  #handraise-btn.raised { background: #14301f; border-color: var(--green); color: var(--green); }
+
+  /* Name prompt modal */
+  #name-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 30;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  #name-modal.open { opacity: 1; pointer-events: all; }
+
+  #name-modal-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    width: min(400px, 90vw);
+  }
+
+  #name-modal-box h2 {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  #name-modal-box p {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: -8px;
+  }
+
+  #name-input {
+    background: #0e1014;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 15px;
+    padding: 10px 14px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  #name-input:focus { border-color: var(--accent); }
+
+  #name-modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+
+  .modal-btn {
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    padding: 8px 20px;
+    transition: all 0.15s;
+  }
+  .modal-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .modal-btn.primary:hover { opacity: 0.85; }
+  .modal-btn.ghost { background: none; color: var(--muted); }
+  .modal-btn.ghost:hover { color: var(--text); }
+
+  /* Hand-raise overlay panel */
+  #handraise-overlay {
+    position: fixed;
+    bottom: 70px;
+    right: 24px;
+    width: min(340px, 90vw);
+    background: rgba(14,16,20,0.92);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    backdrop-filter: blur(8px);
+    z-index: 19;
+    overflow: hidden;
+    transform: translateY(20px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s, transform 0.3s;
+  }
+  #handraise-overlay.visible { opacity: 1; transform: translateY(0); pointer-events: all; }
+
+  #handraise-overlay-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  #handraise-list {
+    max-height: 280px;
+    overflow-y: auto;
+    padding: 8px 0;
+  }
+
+  .handraise-entry {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    font-size: clamp(13px, 1.4vw, 16px);
+    color: var(--text);
+  }
+
+  .handraise-position {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+    width: 20px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  .handraise-entry:first-child .handraise-position { color: var(--green); }
+
+  .handraise-name { flex: 1; font-weight: 600; }
 </style>
 </head>
 <body>
@@ -313,8 +503,10 @@
   <div id="queue-dots"></div>
 
   <div id="clock-area">
+    <div id="parent-label"></div>
     <div id="timer-name"></div>
     <div id="clock">--:--</div>
+    <div id="total-remaining"></div>
     <div id="status-badge">IDLE</div>
     <div id="notes-panel"></div>
   </div>
@@ -324,18 +516,172 @@
   <div id="progress-bar"></div>
 </div>
 
+<div id="overall-progress-wrap">
+  <div id="overall-progress-bar"></div>
+</div>
+
 <div id="conn-status">
   <div id="conn-dot"></div>
   <span id="conn-label">Connecting</span>
 </div>
 
+<!-- Hand-raise overlay -->
+<div id="handraise-overlay">
+  <div id="handraise-overlay-header">✋ Queue</div>
+  <div id="handraise-list"></div>
+</div>
+
+<!-- Raise hand button -->
+<div style="position:fixed;bottom:24px;right:24px;display:flex;flex-direction:column;align-items:flex-end;gap:6px;z-index:20;">
+  <button id="changename-btn" style="background:none;border:none;color:var(--muted);font-family:'Syne',sans-serif;font-size:11px;cursor:pointer;padding:0;text-decoration:underline;display:none;">change name</button>
+  <button id="handraise-btn">✋ Raise Hand</button>
+</div>
+
+<!-- Name prompt modal -->
+<div id="name-modal">
+  <div id="name-modal-box">
+    <h2>What's your name?</h2>
+    <p>Enter your name to raise your hand. It will be saved for this browser.</p>
+    <input type="text" id="name-input" placeholder="Your name" maxlength="60" autocomplete="off">
+    <div id="name-modal-actions">
+      <button class="modal-btn ghost" id="name-cancel">Cancel</button>
+      <button class="modal-btn primary" id="name-confirm">Raise Hand</button>
+    </div>
+  </div>
+</div>
+
 <script>
-let state = { timers: [], activeTimerIndex: null };
-let currentColor = 'var(--green)';
+let state = { timers: [], activeTimerIndex: null, activeSubtimerIndex: null };
+
+// ── Hand-raise ───────────────────────────────────────────────────────────
+let handQueue = [];
+let myName = localStorage.getItem('showclock_name') || null;
+let myHandRaised = false;
+
+// Show change name button on load if name was previously manually entered
+if (myName) {
+  // Will be hidden again if Tailscale identity resolves
+  document.getElementById('changename-btn').style.display = '';
+}
+
+function renderHandQueue() {
+  const overlay  = document.getElementById('handraise-overlay');
+  const list     = document.getElementById('handraise-list');
+  const btn      = document.getElementById('handraise-btn');
+
+  myHandRaised = myName ? !!handQueue.find(e => e.name.toLowerCase() === myName.toLowerCase()) : false;
+
+  btn.textContent = myHandRaised ? '✋ Lower Hand' : '✋ Raise Hand';
+  btn.classList.toggle('raised', myHandRaised);
+
+  if (!handQueue.length) {
+    overlay.classList.remove('visible');
+    list.innerHTML = '';
+    return;
+  }
+
+  overlay.classList.add('visible');
+  list.innerHTML = handQueue.map((e, i) => `
+    <div class="handraise-entry">
+      <span class="handraise-position">${i + 1}</span>
+      <span class="handraise-name">${esc(e.name)}</span>
+    </div>
+  `).join('');
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function resolveIdentity() {
+  try {
+    const res = await fetch('/api/identity');
+    const data = await res.json();
+    if (data.name) return data.name;
+  } catch (e) { /* not behind tsidp */ }
+  return null;
+}
+
+async function handleRaiseBtn() {
+  if (myHandRaised) {
+    // Lower hand
+    ws.send(JSON.stringify({ action: 'lower_hand', name: myName }));
+    return;
+  }
+
+  // Try to get identity
+  if (!myName) {
+    const tsName = await resolveIdentity();
+    if (tsName) {
+      myName = tsName;
+      localStorage.setItem('showclock_name', myName);
+    }
+  }
+
+  if (myName) {
+    ws.send(JSON.stringify({ action: 'raise_hand', name: myName }));
+  } else {
+    // Show name prompt
+    document.getElementById('name-modal').classList.add('open');
+    setTimeout(() => document.getElementById('name-input').focus(), 50);
+  }
+}
+
+document.getElementById('handraise-btn').addEventListener('click', handleRaiseBtn);
+
+document.getElementById('name-confirm').addEventListener('click', () => {
+  const val = document.getElementById('name-input').value.trim();
+  if (!val) return;
+  myName = val;
+  localStorage.setItem('showclock_name', myName);
+  document.getElementById('name-modal').classList.remove('open');
+  document.getElementById('changename-btn').style.display = '';
+  ws.send(JSON.stringify({ action: 'raise_hand', name: myName }));
+});
+
+document.getElementById('name-cancel').addEventListener('click', () => {
+  document.getElementById('name-modal').classList.remove('open');
+});
+
+document.getElementById('name-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('name-confirm').click();
+  if (e.key === 'Escape') document.getElementById('name-cancel').click();
+});
+
+// Pre-resolve Tailscale identity silently on load
+resolveIdentity().then(name => {
+  if (name && !myName) {
+    myName = name;
+    localStorage.setItem('showclock_name', myName);
+  }
+  // Always show change name if we have any name
+  if (myName) {
+    document.getElementById('changename-btn').style.display = '';
+  }
+});
+
+document.getElementById('changename-btn').addEventListener('click', () => {
+  if (myHandRaised && myName) {
+    ws.send(JSON.stringify({ action: 'lower_hand', name: myName }));
+  }
+  const previousName = myName;
+  myName = null;
+  localStorage.removeItem('showclock_name');
+  document.getElementById('name-modal').classList.add('open');
+  // Pre-fill with current name so they can edit rather than retype
+  setTimeout(() => {
+    const inp = document.getElementById('name-input');
+    inp.value = previousName || '';
+    inp.focus();
+    inp.select();
+  }, 50);
+});
 
 // ── WebSocket ────────────────────────────────────────────────────────────
+let ws;
+
 function connect() {
-  const ws = new WebSocket(`ws://${location.host}`);
+  ws = new WebSocket(`ws://${location.host}`);
 
   ws.addEventListener('open', () => {
     document.getElementById('conn-dot').className   = 'connected';
@@ -351,8 +697,11 @@ function connect() {
   ws.addEventListener('message', e => {
     const msg = JSON.parse(e.data);
     if (msg.type === 'state' || msg.type === 'tick') {
-      state = { timers: msg.timers, activeTimerIndex: msg.activeTimerIndex };
+      state = { timers: msg.timers, activeTimerIndex: msg.activeTimerIndex, activeSubtimerIndex: msg.activeSubtimerIndex ?? null };
       render();
+    } else if (msg.type === 'hand_queue') {
+      handQueue = msg.queue || [];
+      renderHandQueue();
     }
   });
 }
@@ -375,7 +724,7 @@ function getColor(t) {
 
 // ── Render ───────────────────────────────────────────────────────────────
 function render() {
-  const { timers, activeTimerIndex } = state;
+  const { timers, activeTimerIndex, activeSubtimerIndex } = state;
   const t = activeTimerIndex !== null ? timers[activeTimerIndex] : null;
 
   const idle    = document.getElementById('idle-screen');
@@ -390,23 +739,41 @@ function render() {
   idle.classList.add('hidden');
   display.classList.add('visible');
 
-  // Color
-  const color = getColor(t);
+  const sub = (activeSubtimerIndex !== null && t.subtimers && t.subtimers[activeSubtimerIndex])
+    ? t.subtimers[activeSubtimerIndex] : null;
+
+  // Determine what's ticking and what thresholds to use
+  const active       = sub || t;
+  const displayName  = sub ? sub.name : t.name;
+  const parentName   = sub ? t.name : null;
+
+  // Color based on active entity's thresholds
+  const color = getColor(active);
   document.documentElement.style.setProperty('--current-color', color);
-  document.documentElement.style.setProperty('--flash-rate', `${t.flashRate}ms`);
+  document.documentElement.style.setProperty('--flash-rate', `${active.flashRate}ms`);
 
-  // Clock
+  // Parent label (only when subtimer is active)
+  const parentLabelEl = document.getElementById('parent-label');
+  if (parentName) {
+    parentLabelEl.textContent = parentName;
+    parentLabelEl.classList.add('visible');
+  } else {
+    parentLabelEl.classList.remove('visible');
+  }
+
+  // Timer name (subtimer name if active, else parent name)
+  document.getElementById('timer-name').textContent = displayName;
+
+  // Clock shows active entity's remaining
   const clockEl = document.getElementById('clock');
-  clockEl.textContent = fmt(t.remaining);
+  clockEl.textContent = fmt(active.remaining);
 
-  const shouldFlash = t.status === 'running' && t.remaining <= t.flashAt && t.remaining > 0;
+  const shouldFlash = t.status === 'running' && active.remaining <= active.flashAt && active.remaining > 0;
   clockEl.classList.toggle('flash', shouldFlash);
 
-  // Name & notes
-  document.getElementById('timer-name').textContent = t.name;
+  // Notes (always from parent)
   const notesEl = document.getElementById('notes-panel');
   let notesHtml = (t.message || '').trim();
-  // If the string looks like it's been entity-encoded, decode it first
   if (notesHtml.includes('&lt;') || notesHtml.includes('&amp;')) {
     const txt = document.createElement('textarea');
     txt.innerHTML = notesHtml;
@@ -415,18 +782,41 @@ function render() {
   notesEl.innerHTML = notesHtml;
   notesEl.classList.toggle('has-content', notesHtml.length > 0 && notesHtml !== '<p><br></p>');
 
+  // Total remaining (only shown when subtimers are active)
+  const totalEl = document.getElementById('total-remaining');
+  if (sub && t.subtimers.length > 0) {
+    const parentRemaining = t.subtimers.reduce((sum, s) => sum + s.remaining, 0);
+    totalEl.textContent = `Total Time Remaining: ${fmt(parentRemaining)}`;
+    totalEl.classList.add('visible');
+  } else {
+    totalEl.textContent = '';
+    totalEl.classList.remove('visible');
+  }
+
   // Status badge
   const badge = document.getElementById('status-badge');
   badge.textContent = t.status.toUpperCase();
   badge.className   = t.status;
 
-  // Progress bar
-  const pct = t.duration > 0 ? (t.remaining / t.duration) * 100 : 0;
+  // Main progress bar — active entity's own progress
+  const activePct = active.duration > 0 ? (active.remaining / active.duration) * 100 : 0;
   const bar = document.getElementById('progress-bar');
-  bar.style.width = `${pct}%`;
+  bar.style.width = `${activePct}%`;
   bar.classList.toggle('flash', shouldFlash);
 
-  // Queue dots
+  // Overall progress bar — parent timer's total progress (only visible when subtimers present)
+  const overallBar = document.getElementById('overall-progress-bar');
+  if (sub && t.duration > 0) {
+    // Compute parent remaining as sum of subtimer remainings
+    const parentRemaining = t.subtimers.reduce((sum, s) => sum + s.remaining, 0);
+    const overallPct = (parentRemaining / t.duration) * 100;
+    overallBar.style.width = `${overallPct}%`;
+    overallBar.style.display = '';
+  } else {
+    overallBar.style.display = 'none';
+  }
+
+  // Queue dots (parent timers only)
   const dotsEl = document.getElementById('queue-dots');
   dotsEl.innerHTML = timers.map((_, i) =>
     `<div class="q-dot ${i === activeTimerIndex ? 'active' : ''}"></div>`
