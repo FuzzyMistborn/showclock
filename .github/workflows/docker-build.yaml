@@ -32,10 +32,20 @@ jobs:
             --head dev \
             --title "Release ${{ github.event.release.tag_name }}" \
             --body "Automated PR for release ${{ github.event.release.tag_name }}. Merges \`dev\` into \`main\`." \
-            2>/dev/null) || PR_URL=$(gh pr view --base main --head dev --json url --jq .url 2>/dev/null)
+            2>/dev/null) || PR_URL=$(gh pr view --head dev --json url --jq .url 2>/dev/null)
           if [ -n "$PR_URL" ]; then
-            gh pr merge "$PR_URL" --auto --merge
+            gh pr merge "$PR_URL" --merge
           fi
+
+      - name: Sync main back to dev
+        if: github.event_name == 'release'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin
+          git checkout dev
+          git merge origin/main --ff-only
+          git push origin dev
 
       - name: Log in to GHCR
         uses: docker/login-action@v4
