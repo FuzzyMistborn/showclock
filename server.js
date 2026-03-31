@@ -278,9 +278,25 @@ function resetTimerState(t) {
   t.subtimers.forEach(s => { s.status = 'idle'; s.remaining = s.duration; });
 }
 
+// ── Hand-raise queue ──────────────────────────────────────────────────────────
+let handQueue = []; // [{ name, raisedAt }]
+
+function broadcastHandQueue() {
+  broadcast({ type: 'hand_queue', queue: handQueue });
+}
+
+// REST endpoint for Tailscale identity check
+app.get('/api/identity', (req, res) => {
+  const displayName = req.headers['tailscale-user-name'] || null;
+  const email       = req.headers['tailscale-user-login'] || null;
+  const name        = displayName || email || null;
+  res.json({ name, source: name ? (displayName ? 'tailscale' : 'email') : 'none' });
+});
+
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 wss.on('connection', ws => {
   ws.send(JSON.stringify({ type: 'state', timers, activeTimerIndex, activeSubtimerIndex, settings }));
+  ws.send(JSON.stringify({ type: 'hand_queue', queue: handQueue }));
 
   ws.on('message', raw => {
     let msg;
@@ -651,6 +667,29 @@ wss.on('connection', ws => {
         broadcastState();
         break;
       }
+      case 'raise_hand': {
+        const name = (msg.name || '').trim();
+        if (!name) break;
+        // Prevent duplicates
+        if (handQueue.find(e => e.name.toLowerCase() === name.toLowerCase())) break;
+        handQueue.push({ name, raisedAt: Date.now() });
+        broadcastHandQueue();
+        break;
+      }
+
+      case 'lower_hand': {
+        const name = (msg.name || '').trim();
+        handQueue = handQueue.filter(e => e.name.toLowerCase() !== name.toLowerCase());
+        broadcastHandQueue();
+        break;
+      }
+
+      case 'clear_queue': {
+        handQueue = [];
+        broadcastHandQueue();
+        break;
+      }
+
     } // end switch
     } catch (err) {
       console.error('WS message handler error:', err);
