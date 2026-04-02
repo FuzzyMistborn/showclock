@@ -203,23 +203,25 @@
 
   #notes-panel ol { list-style: decimal; }
 
-  #notes-panel li { margin-left: 0; }
-  #notes-panel li::marker { color: var(--current-color); }
+  /* Quill indent levels — covers both li and block elements */
+  #notes-panel .ql-indent-1 { padding-left: 3em; }
+  #notes-panel .ql-indent-2 { padding-left: 6em; }
+  #notes-panel .ql-indent-3 { padding-left: 9em; }
+  #notes-panel .ql-indent-4 { padding-left: 12em; }
+  #notes-panel .ql-indent-5 { padding-left: 15em; }
+  #notes-panel .ql-indent-6 { padding-left: 18em; }
+  #notes-panel .ql-indent-7 { padding-left: 21em; }
+  #notes-panel .ql-indent-8 { padding-left: 24em; }
 
-  /* Quill indent levels — markers move with the text */
-  #notes-panel li.ql-indent-1 { margin-left: 3em; }
-  #notes-panel li.ql-indent-2 { margin-left: 6em; }
-  #notes-panel li.ql-indent-3 { margin-left: 9em; }
-  #notes-panel li.ql-indent-4 { margin-left: 12em; }
-  #notes-panel li.ql-indent-5 { margin-left: 15em; }
-  #notes-panel li.ql-indent-6 { margin-left: 18em; }
-  #notes-panel li.ql-indent-7 { margin-left: 21em; }
-  #notes-panel li.ql-indent-8 { margin-left: 24em; }
-
-  /* Remove the old padding-left indent rules */
-  #notes-panel .ql-indent-1:not(li) { padding-left: 3em; }
-  #notes-panel .ql-indent-2:not(li) { padding-left: 6em; }
-  #notes-panel .ql-indent-3:not(li) { padding-left: 9em; }
+  /* For li elements, use margin-left so the bullet also moves */
+  #notes-panel li.ql-indent-1 { padding-left: 0; margin-left: 3em; }
+  #notes-panel li.ql-indent-2 { padding-left: 0; margin-left: 6em; }
+  #notes-panel li.ql-indent-3 { padding-left: 0; margin-left: 9em; }
+  #notes-panel li.ql-indent-4 { padding-left: 0; margin-left: 12em; }
+  #notes-panel li.ql-indent-5 { padding-left: 0; margin-left: 15em; }
+  #notes-panel li.ql-indent-6 { padding-left: 0; margin-left: 18em; }
+  #notes-panel li.ql-indent-7 { padding-left: 0; margin-left: 21em; }
+  #notes-panel li.ql-indent-8 { padding-left: 0; margin-left: 24em; }
 
   /* Alternating bullet styles per indent level */
   #notes-panel li.ql-indent-1,
