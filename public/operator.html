@@ -7,7 +7,6 @@
 <link rel="icon" type="image/x-icon" href="/favicon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
-<link href="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.snow.min.css" rel="stylesheet">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -944,7 +943,8 @@
   .sub-total-display.mismatch { color: var(--red); }
   .sub-total-display.match    { color: var(--green); }
 
-  /* ── Quill notes editor ── */
+
+  /* ── Markdown notes editor ── */
   .notes-wrap {
     grid-column: 1 / -1;
     display: flex;
@@ -976,46 +976,24 @@
   }
   .notes-live-badge.visible { opacity: 1; }
 
-  #quill-editor {
+  #notes-editor {
     background: var(--surface2);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.6;
     min-height: 140px;
     max-height: 260px;
-    overflow-y: auto;
+    outline: none;
+    padding: 10px 14px;
+    resize: vertical;
+    width: 100%;
+    transition: border-color 0.15s;
   }
-
-  /* Override Quill snow theme to match dark UI */
-  .ql-toolbar.ql-snow {
-    background: var(--surface);
-    border: 1px solid var(--border) !important;
-    border-bottom: 1px solid var(--border) !important;
-    border-radius: var(--radius) var(--radius) 0 0;
-    padding: 6px 8px;
-  }
-
-  .ql-container.ql-snow {
-    border: 1px solid var(--border) !important;
-    border-top: none !important;
-    border-radius: 0 0 var(--radius) var(--radius);
-    font-family: var(--sans);
-    font-size: 13px;
-  }
-
-  .ql-editor { min-height: 100px; color: var(--text); padding: 10px 14px; }
-  .ql-editor.ql-blank::before { color: var(--muted); font-style: normal; }
-
-  .ql-snow .ql-stroke { stroke: var(--muted) !important; }
-  .ql-snow .ql-fill  { fill:   var(--muted) !important; }
-  .ql-snow .ql-picker-label { color: var(--muted) !important; }
-  .ql-snow .ql-picker-options { background: var(--surface2); border-color: var(--border); }
-  .ql-snow.ql-toolbar button:hover .ql-stroke,
-  .ql-snow.ql-toolbar button.ql-active .ql-stroke { stroke: var(--accent) !important; }
-  .ql-snow.ql-toolbar button:hover .ql-fill,
-  .ql-snow.ql-toolbar button.ql-active .ql-fill   { fill:   var(--accent) !important; }
-  .ql-snow .ql-editor ul, .ql-snow .ql-editor ol  { padding-left: 1.4em; }
-  .ql-snow .ql-editor li { color: var(--text); }
+  #notes-editor:focus { border-color: var(--accent); }
+  #notes-editor::placeholder { color: var(--muted); }
 </style>
 </head>
 <body>
@@ -1119,10 +1097,10 @@
 
         <div class="notes-wrap">
           <label>
-            Show Notes
-            <span class="notes-live-badge" id="notes-live-badge">● LIVE</span>
+            Show Notes <span style="font-size:10px;color:var(--muted);font-weight:400;">(markdown)</span>
+            <span class="notes-live-badge" id="notes-live-badge">Saved</span>
           </label>
-          <div id="quill-editor"></div>
+          <textarea id="notes-editor" placeholder="Add topics, talking points, cues… (markdown supported)"></textarea>
         </div>
 
         <hr class="section-divider">
@@ -1254,15 +1232,12 @@
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.min.js"></script>
 <script>
 // ── State ─────────────────────────────────────────────────────────────────
 let state = { timers: [], activeTimerIndex: null, activeSubtimerIndex: null, settings: {} };
 let editingId = null;
 let flashInterval = null;
-let quill = null;
 let notesSyncTimeout = null;
-let suppressQuillEvent = false;
 
 // ── WebSocket ─────────────────────────────────────────────────────────────
 const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -1684,29 +1659,16 @@ function renderActiveDisplay() {
   } catch (err) { console.error('renderActiveDisplay error:', err); }
 }
 // ── Editor ────────────────────────────────────────────────────────────────
-function initQuill() {
-  if (quill) return; // already initialized
-  quill = new Quill('#quill-editor', {
-    theme: 'snow',
-    placeholder: 'Add topics, talking points, cues…',
-    modules: {
-      toolbar: [
-        ['bold', 'italic', 'underline'],
-        [{ list: 'ordered' }, { list: 'bullet' }],
-        [{ indent: '-1' }, { indent: '+1' }],
-        ['clean']
-      ]
-    }
-  });
-
-  // Live sync — debounced 500ms after last keystroke
-  quill.on('text-change', () => {
-    if (suppressQuillEvent) return;
+function initNotesEditor() {
+  const ta = document.getElementById('notes-editor');
+  if (ta._initialized) return;
+  ta._initialized = true;
+  ta.addEventListener('input', () => {
     if (editingId === null) return;
     clearTimeout(notesSyncTimeout);
     const badge = document.getElementById('notes-live-badge');
     notesSyncTimeout = setTimeout(() => {
-      send({ action: 'update_notes', id: editingId, message: quill.root.innerHTML });
+      send({ action: 'update_notes', id: editingId, message: ta.value });
       badge.classList.add('visible');
       setTimeout(() => badge.classList.remove('visible'), 1200);
     }, 500);
@@ -1723,7 +1685,7 @@ function openEditor(id) {
   document.getElementById('no-selection').style.display = 'none';
   document.getElementById('editor').style.display = 'block';
 
-  initQuill();
+  initNotesEditor();
 
   document.getElementById('f-name').value       = t.name;
   document.getElementById('f-duration').value   = fmt(t.duration);
@@ -1735,12 +1697,10 @@ function openEditor(id) {
   document.getElementById('f-flash-rate').value = t.flashRate;
   document.getElementById('editor-heading').textContent = `Edit: ${t.name}`;
 
+  document.getElementById('notes-editor').value = t.message || '';
+
   updateRemainingDisplay();
   renderSubtimerEditor(id);
-
-  suppressQuillEvent = true;
-  quill.root.innerHTML = t.message || '';
-  suppressQuillEvent = false;
 }
 
 function renderSubtimerEditor(parentId) {
@@ -1895,7 +1855,7 @@ function doSave(showToast = true) {
     timer: {
       name:      document.getElementById('f-name').value.trim() || 'Timer',
       duration,
-      message:   quill ? quill.root.innerHTML : '',
+      message:   document.getElementById('notes-editor')?.value || '',
       yellowAt:  +document.getElementById('f-yellow-at').value || 60,
       redAt:     +document.getElementById('f-red-at').value || 30,
       flashAt:   +document.getElementById('f-flash-at').value || 30,
@@ -2035,8 +1995,8 @@ document.getElementById('btn-add30').addEventListener('click', () => {
 document.addEventListener('keydown', e => {
   const tag = e.target.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-  // Suppress hotkeys when focus is inside the Quill editor
-  if (e.target.closest && e.target.closest('.ql-editor')) return;
+  // Suppress hotkeys when focus is inside the notes editor
+  if (e.target.closest && e.target.closest('#notes-editor')) return;
   if (e.code === 'Space') { e.preventDefault(); document.getElementById('btn-play').click(); }
   if (e.code === 'ArrowLeft')  send({ action: 'prev' });
   if (e.code === 'ArrowRight') send({ action: 'next' });

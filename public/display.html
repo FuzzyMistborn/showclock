@@ -181,7 +181,7 @@
   #notes-panel::-webkit-scrollbar { width: 4px; }
   #notes-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
 
-  /* Render Quill HTML output on the display */
+  /* ── Notes panel — markdown rendered by marked.js ── */
   #notes-panel p, #notes-panel li {
     font-size: clamp(14px, 1.8vw, 22px);
     font-weight: 400;
@@ -191,47 +191,21 @@
   }
 
   #notes-panel strong { color: rgba(240,242,248,0.95); font-weight: 700; }
-  #notes-panel em    { font-style: italic; }
-  #notes-panel u     { text-decoration: underline; }
+  #notes-panel em     { font-style: italic; }
 
   #notes-panel ul, #notes-panel ol {
     padding-left: 1.6em;
     margin: 2px 0;
-    list-style: disc;
-    list-style-position: outside;
   }
 
+  #notes-panel ul { list-style: disc; }
   #notes-panel ol { list-style: decimal; }
 
-  #notes-panel li { margin-left: 0; }
+  /* Nested lists */
+  #notes-panel ul ul, #notes-panel ol ul { list-style: circle; }
+  #notes-panel ul ul ul, #notes-panel ol ol ul { list-style: square; }
+
   #notes-panel li::marker { color: var(--current-color); }
-
-  /* Quill indent levels — markers move with the text */
-  #notes-panel li.ql-indent-1 { margin-left: 3em; }
-  #notes-panel li.ql-indent-2 { margin-left: 6em; }
-  #notes-panel li.ql-indent-3 { margin-left: 9em; }
-  #notes-panel li.ql-indent-4 { margin-left: 12em; }
-  #notes-panel li.ql-indent-5 { margin-left: 15em; }
-  #notes-panel li.ql-indent-6 { margin-left: 18em; }
-  #notes-panel li.ql-indent-7 { margin-left: 21em; }
-  #notes-panel li.ql-indent-8 { margin-left: 24em; }
-
-  /* Remove the old padding-left indent rules */
-  #notes-panel .ql-indent-1:not(li) { padding-left: 3em; }
-  #notes-panel .ql-indent-2:not(li) { padding-left: 6em; }
-  #notes-panel .ql-indent-3:not(li) { padding-left: 9em; }
-
-  /* Alternating bullet styles per indent level */
-  #notes-panel li.ql-indent-1,
-  #notes-panel li.ql-indent-3,
-  #notes-panel li.ql-indent-5,
-  #notes-panel li.ql-indent-7 { list-style-type: circle; }
-
-  #notes-panel li.ql-indent-2,
-  #notes-panel li.ql-indent-4,
-  #notes-panel li.ql-indent-6,
-  #notes-panel li.ql-indent-8 { list-style-type: square; }
-
   #notes-panel p + p { margin-top: 4px; }
 
   /* ── Parent timer label (shown when subtimer is active) ── */
@@ -550,6 +524,7 @@
   </div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
 <script>
 let state = { timers: [], activeTimerIndex: null, activeSubtimerIndex: null };
 
@@ -772,16 +747,16 @@ function render() {
   const shouldFlash = t.status === 'running' && active.remaining <= active.flashAt && active.remaining > 0;
   clockEl.classList.toggle('flash', shouldFlash);
 
-  // Notes (always from parent)
+  // Notes — render markdown (always from parent timer)
   const notesEl = document.getElementById('notes-panel');
-  let notesHtml = (t.message || '').trim();
-  if (notesHtml.includes('&lt;') || notesHtml.includes('&amp;')) {
-    const txt = document.createElement('textarea');
-    txt.innerHTML = notesHtml;
-    notesHtml = txt.value;
+  const markdown = (t.message || '').trim();
+  if (markdown) {
+    notesEl.innerHTML = marked.parse(markdown);
+    notesEl.classList.add('has-content');
+  } else {
+    notesEl.innerHTML = '';
+    notesEl.classList.remove('has-content');
   }
-  notesEl.innerHTML = notesHtml;
-  notesEl.classList.toggle('has-content', notesHtml.length > 0 && notesHtml !== '<p><br></p>');
 
   // Total remaining (only shown when subtimers are active)
   const totalEl = document.getElementById('total-remaining');
