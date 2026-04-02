@@ -681,7 +681,8 @@ document.getElementById('changename-btn').addEventListener('click', () => {
 let ws;
 
 function connect() {
-  ws = new WebSocket(`ws://${location.host}`);
+  const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${wsProtocol}//${location.host}`);
 
   ws.addEventListener('open', () => {
     document.getElementById('conn-dot').className   = 'connected';
