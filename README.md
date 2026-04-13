@@ -3,7 +3,7 @@
 A self-hosted stage timer for live events and presentations. Run it in Docker, control it from one browser tab, display it on another.
 
 > [!WARNING]
-> Disclosure: This was written by AI.  So while it has been tested for bugs/functionality, I cannot guarantee its security.  Run at your own risk!  I would highly recommend running over something like Tailscale or Wireguard for secure access.
+> Disclosure: This was written by AI.  So while it has been tested for bugs/functionality, I cannot guarantee its security (though I have run a few prompts specifically focused on security/vulnerabilities).  Run at your own risk!  I would highly recommend running over something like Tailscale or Wireguard for secure access.
 
 ## Screenshots
 
@@ -54,6 +54,7 @@ services:
       - OPERATOR_PASSWORD=your-password-here   # optional — omit to disable auth
       - SESSION_TTL_HOURS=24 # optional - session lifetime in hours (default: 24)
       - OPERATOR_SECRET=your-random-secret-here # optional - fix the internal WS auth token so it persists across restarts
+      - TRUST_PROXY=true # optional - set if behind a TLS-terminating reverse proxy
     volumes:
       - /YOURPATH/showclock:/data
 ```
@@ -124,12 +125,22 @@ Notes sync to the display automatically as you type (500ms debounce).
 | `OPERATOR_PASSWORD` | _(unset)_ | Password for the operator page. If unset, no login is required |
 | `SESSION_TTL_HOURS` | `24` | How long an operator login session lasts (hours) |
 | `OPERATOR_SECRET` | _(random)_ | Internal WS auth token. Set explicitly to persist across restarts |
+| `TRUST_PROXY` | _(unset)_ | Set to `true` when running behind a TLS-terminating reverse proxy. Enables `Secure` cookie flag, HSTS header, and `X-Forwarded-For` trust for rate limiting |
 
 ## Authentication
 
 If `OPERATOR_PASSWORD` is set, visiting `/operator.html` redirects to a login page. Sessions are stored in memory and last 24 hours by default (configurable via `SESSION_TTL_HOURS`). Sessions reset on server restart.
 
 The display page (`/display.html`) and hand-raise interface are always accessible without a password — only the operator console is protected.
+
+## Security
+
+ShowClock is designed primarily for use behind a VPN like Tailscale or Wireguard. If you choose to expose it to the internet, **AT MINIMUM** do the following:
+
+- Set `OPERATOR_PASSWORD` to a strong password.
+- Set `OPERATOR_SECRET` explicitly so it persists across restarts.
+- Run behind a TLS-terminating reverse proxy (Caddy, nginx, Traefik) and set `TRUST_PROXY=true`.
+- Restrict access to trusted networks where possible (firewall rules, Cloudflare Access, etc.).
 
 ## Running Without Docker
 

@@ -9,28 +9,86 @@ const crypto = require('crypto');
 const app = express();
 const server = http.createServer(app);
 
-// ── Operator secret (set via env var, random fallback) ────────────────────────
+// ── Operator secret (set via env var, cryptographically random fallback) ───────
 const OPERATOR_SECRET = process.env.OPERATOR_SECRET || (() => {
-  const s = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+  const s = crypto.randomBytes(32).toString('hex');
   console.log(`[showclock] No OPERATOR_SECRET set — using random: ${s}`);
   return s;
 })();
 
 // ── Password auth (optional — only active if OPERATOR_PASSWORD is set) ────────
 const OPERATOR_PASSWORD = process.env.OPERATOR_PASSWORD || null;
+const TRUST_PROXY = process.env.TRUST_PROXY === 'true'; // set true behind a reverse proxy
 const sessions = new Map(); // token → expiresAt
+
+// ── Login brute-force protection ──────────────────────────────────────────────
+const loginAttempts = new Map(); // ip → { count, firstAttempt }
+const LOGIN_WINDOW_MS  = 15 * 60 * 1000; // 15 minutes
+const LOGIN_MAX_ATTEMPTS = 10;            // max failures per window
+
+function getClientIp(req) {
+  if (TRUST_PROXY) {
+    const forwarded = req.headers['x-forwarded-for'];
+    if (forwarded) return forwarded.split(',')[0].trim();
+  }
+  return req.socket.remoteAddress || 'unknown';
+}
+
+function isLoginRateLimited(ip) {
+  const entry = loginAttempts.get(ip);
+  if (!entry) return false;
+  if (Date.now() - entry.firstAttempt > LOGIN_WINDOW_MS) {
+    loginAttempts.delete(ip);
+    return false;
+  }
+  return entry.count >= LOGIN_MAX_ATTEMPTS;
+}
+
+function recordFailedLogin(ip) {
+  const entry = loginAttempts.get(ip);
+  if (!entry || Date.now() - entry.firstAttempt > LOGIN_WINDOW_MS) {
+    loginAttempts.set(ip, { count: 1, firstAttempt: Date.now() });
+  } else {
+    entry.count++;
+  }
+}
+
+function clearLoginAttempts(ip) {
+  loginAttempts.delete(ip);
+}
+
+// Clean up stale login attempt records periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of loginAttempts) {
+    if (now - entry.firstAttempt > LOGIN_WINDOW_MS) loginAttempts.delete(ip);
+  }
+}, 5 * 60 * 1000); // every 5 minutes
 
 function generateToken() {
   return crypto.randomBytes(32).toString('hex');
 }
 
+function generateCsrfToken() {
+  return crypto.randomBytes(24).toString('hex');
+}
+
+// CSRF tokens: tied to session or ephemeral for login page
+const csrfTokens = new Map(); // token → expiresAt
+
 function isValidSession(token) {
   if (!OPERATOR_PASSWORD) return true; // auth disabled
   if (!token) return false;
-  const exp = sessions.get(token);
-  if (!exp) return false;
-  if (Date.now() > exp) { sessions.delete(token); return false; }
+  const session = sessions.get(token);
+  if (!session) return false;
+  if (Date.now() > session.expiresAt) { sessions.delete(token); return false; }
   return true;
+}
+
+function getSessionOperatorSecret(token) {
+  if (!OPERATOR_PASSWORD) return OPERATOR_SECRET; // auth disabled — use global secret
+  const session = sessions.get(token);
+  return session ? session.operatorSecret : null;
 }
 
 function getSessionToken(req) {
@@ -47,17 +105,45 @@ function requireAuth(req, res, next) {
   res.redirect(`/login?next=${encodeURIComponent(req.path)}`);
 }
 
-// Periodically clean up expired sessions
+// Periodically clean up expired sessions and CSRF tokens
 setInterval(() => {
   const now = Date.now();
-  for (const [token, exp] of sessions) {
-    if (now > exp) sessions.delete(token);
+  for (const [token, session] of sessions) {
+    if (now > session.expiresAt) sessions.delete(token);
+  }
+  for (const [token, exp] of csrfTokens) {
+    if (now > exp) csrfTokens.delete(token);
   }
 }, 60 * 60 * 1000); // every hour
 
 const wss = new WebSocket.Server({
   server,
   maxPayload: 512 * 1024, // 512KB max WS message size
+  verifyClient: ({ req }, done) => {
+    // ── WebSocket origin validation ───────────────────────────────────────
+    const origin = req.headers.origin;
+    if (!origin) {
+      // Allow connections with no Origin header (non-browser clients, curl, etc.)
+      return done(true);
+    }
+    try {
+      const originUrl = new URL(origin);
+      const hostHeader = req.headers.host || '';
+      // Strip port from both for comparison
+      const originHost = originUrl.host; // includes port if non-default
+      if (originHost === hostHeader) {
+        return done(true);
+      }
+      // Also allow if just the hostname matches (covers port mismatches behind proxies)
+      if (originUrl.hostname === hostHeader.split(':')[0]) {
+        return done(true);
+      }
+    } catch (e) {
+      // Malformed origin — reject
+    }
+    console.warn(`[showclock] Rejected WebSocket from origin: ${origin}`);
+    done(false, 403, 'Forbidden');
+  },
 });
 
 app.use(express.json({ limit: '512kb' }));
@@ -100,6 +186,11 @@ app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  // HSTS — only sent when behind TLS proxy (indicated by TRUST_PROXY)
+  if (TRUST_PROXY) {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
   next();
 });
 
@@ -121,6 +212,10 @@ app.get('/login', (req, res) => {
   if (isValidSession(getSessionToken(req))) return res.redirect(req.query.next || '/operator.html');
   const next = req.query.next ? `?next=${encodeURIComponent(req.query.next)}` : '';
   const error = req.query.error ? '<p class="error">Incorrect password. Try again.</p>' : '';
+  const rateLimited = req.query.ratelimit ? '<p class="error">Too many attempts. Try again later.</p>' : '';
+  // Generate CSRF token for the login form
+  const csrf = generateCsrfToken();
+  csrfTokens.set(csrf, Date.now() + 10 * 60 * 1000); // 10 minute expiry
   res.send(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -147,8 +242,9 @@ app.get('/login', (req, res) => {
 <div class="box">
   <div class="logo"><img src="/showclock.png" alt="">ShowClock</div>
   <h1>Operator login</h1>
-  ${error}
+  ${error}${rateLimited}
   <form method="POST" action="/login${next}">
+    <input type="hidden" name="_csrf" value="${csrf}">
     <div style="display:flex;flex-direction:column;gap:8px">
       <label for="pw">Password</label>
       <input type="password" id="pw" name="password" autofocus autocomplete="current-password">
@@ -161,27 +257,49 @@ app.get('/login', (req, res) => {
 
 app.post('/login', (req, res) => {
   if (!OPERATOR_PASSWORD) return res.redirect('/operator.html');
+
+  // CSRF check
+  const csrf = String(req.body._csrf || '');
+  const csrfValid = csrfTokens.has(csrf) && csrfTokens.get(csrf) > Date.now();
+  csrfTokens.delete(csrf); // single-use
+  if (!csrfValid) {
+    const next = req.query.next ? `&next=${encodeURIComponent(req.query.next)}` : '';
+    return res.redirect(`/login?error=1${next}`);
+  }
+
+  // Brute-force rate limit
+  const ip = getClientIp(req);
+  if (isLoginRateLimited(ip)) {
+    return res.redirect('/login?ratelimit=1');
+  }
+
   const supplied = String(req.body.password || '');
   // Constant-time comparison to prevent timing attacks
   const a = Buffer.from(supplied.padEnd(64));
   const b = Buffer.from(OPERATOR_PASSWORD.padEnd(64));
   const match = a.length === b.length && crypto.timingSafeEqual(a, b) && supplied === OPERATOR_PASSWORD;
   if (!match) {
+    recordFailedLogin(ip);
     const next = req.query.next ? `&next=${encodeURIComponent(req.query.next)}` : '';
     return res.redirect(`/login?error=1${next}`);
   }
+  clearLoginAttempts(ip);
   const token = generateToken();
+  // Generate a per-session operator secret so compromising one session doesn't grant permanent access
+  const sessionOperatorSecret = crypto.randomBytes(16).toString('hex');
   const SESSION_TTL = parseInt(process.env.SESSION_TTL_HOURS || '24') * 60 * 60 * 1000;
-  sessions.set(token, Date.now() + SESSION_TTL);
+  sessions.set(token, { expiresAt: Date.now() + SESSION_TTL, operatorSecret: sessionOperatorSecret });
   const next = req.query.next || '/operator.html';
-  res.setHeader('Set-Cookie', `sc_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_TTL / 1000}`);
+  const securePart = TRUST_PROXY ? ' Secure;' : '';
+  res.setHeader('Set-Cookie', `sc_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_TTL / 1000};${securePart}`);
   res.redirect(next);
 });
 
 app.get('/logout', (req, res) => {
   const token = getSessionToken(req);
   if (token) sessions.delete(token);
-  res.setHeader('Set-Cookie', 'sc_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');
+  const securePart = TRUST_PROXY ? ' Secure;' : '';
+  res.setHeader('Set-Cookie', `sc_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0;${securePart}`);
   res.redirect('/login');
 });
 
@@ -191,7 +309,10 @@ app.get('/operator.html', requireAuth, (req, res) => {
 });
 
 app.get('/api/operator-token', requireAuth, (req, res) => {
-  res.json({ token: OPERATOR_SECRET });
+  const sessionToken = getSessionToken(req);
+  const secret = getSessionOperatorSecret(sessionToken);
+  if (!secret) return res.status(401).json({ error: 'invalid session' });
+  res.json({ token: secret });
 });
 
 // ── Database ──────────────────────────────────────────────────────────────────
@@ -345,6 +466,22 @@ let activeSubtimerIndex = null; // index within active timer's subtimers array
 let timerInterval = null;
 let settings = loadSettings();
 
+// ── Hand-raise queue ──────────────────────────────────────────────────────────
+const MAX_HAND_QUEUE_SIZE = 50;
+let handQueue = []; // [{ name, raisedAt }]
+
+// ── WebSocket rate limiting ───────────────────────────────────────────────────
+const WS_RATE_LIMIT_WINDOW = 1000; // 1 second
+const WS_RATE_LIMIT_MAX = 20;      // max messages per second per connection
+
+// Actions that require operator privileges via identify_operator handshake
+const OPERATOR_ACTIONS = new Set([
+  'create', 'update', 'update_notes', 'delete', 'reorder',
+  'create_subtimer', 'update_subtimer', 'delete_subtimer', 'reorder_subtimer',
+  'select', 'select_subtimer', 'play', 'pause', 'reset', 'scrub', 'add30',
+  'prev', 'next', 'save_settings', 'clear_queue',
+]);
+
 function loadFromDb() {
   const rows = stmts.all.all();
   if (rows.length === 0) {
@@ -472,9 +609,6 @@ function resetTimerState(t) {
   t.subtimers.forEach(s => { s.status = 'idle'; s.remaining = s.duration; });
 }
 
-// ── Hand-raise queue ──────────────────────────────────────────────────────────
-let handQueue = []; // [{ name, raisedAt }]
-
 function broadcastHandQueue() {
   broadcast({ type: 'hand_queue', queue: handQueue });
 }
@@ -488,19 +622,40 @@ app.get('/api/identity', (req, res) => {
 });
 
 // REST endpoint — operator page fetches this to get the shared secret
-app.get('/api/operator-token', (req, res) => {
-  res.json({ token: OPERATOR_SECRET });
-});
+// (already defined above with requireAuth, duplicate removed)
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 wss.on('connection', ws => {
-  ws.send(JSON.stringify({ type: 'state', timers, activeTimerIndex, activeSubtimerIndex, settings }));
+  // ── Per-connection rate limiter state ────────────────────────────────────
+  ws._rateCount = 0;
+  ws._rateWindowStart = Date.now();
+
+  // Send state without settings to non-operator connections initially
+  // Operators will receive full state (with settings) after identify_operator
+  ws.send(JSON.stringify({ type: 'state', timers, activeTimerIndex, activeSubtimerIndex }));
   ws.send(JSON.stringify({ type: 'hand_queue', queue: handQueue }));
 
   ws.on('message', raw => {
+    // ── Rate limiting ─────────────────────────────────────────────────────
+    const now = Date.now();
+    if (now - ws._rateWindowStart > WS_RATE_LIMIT_WINDOW) {
+      ws._rateCount = 0;
+      ws._rateWindowStart = now;
+    }
+    ws._rateCount++;
+    if (ws._rateCount > WS_RATE_LIMIT_MAX) {
+      return; // silently drop excess messages
+    }
+
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
     try {
+
+    // Block non-operators from privileged actions
+    // (raise_hand, lower_hand, and identify_operator are allowed for everyone)
+    if (OPERATOR_ACTIONS.has(msg.action) && !ws._isOperator) {
+      return;
+    }
 
     switch (msg.action) {
 
@@ -538,23 +693,25 @@ wss.on('connection', ws => {
       case 'update': {
         const idx = timers.findIndex(t => t.id === msg.id);
         if (idx === -1) break;
-        const wasRunning = idx === activeTimerIndex && timers[idx].status === 'running';
-        const wasPartiallyRun = timers[idx].remaining < timers[idx].duration;
+        const timer = timers[idx];
+        const wasRunning = idx === activeTimerIndex && timer.status === 'running';
+        const wasPartiallyRun = timer.remaining < timer.duration;
+        const oldDuration = timer.duration; // capture BEFORE mutation
         const o = msg.timer;
-        const hasSubs = timers[idx].subtimers.length > 0;
-        const newDuration = hasSubs ? timers[idx].duration : safeInt(o.duration, timers[idx].duration, 1, 86400);
-        const newName     = safeName(o.name, timers[idx].name);
-        const newMessage  = String(o.message ?? timers[idx].message).slice(0, 50000);
-        const newYellow   = safeInt(o.yellowAt,  timers[idx].yellowAt,  0, 86400);
-        const newRed      = safeInt(o.redAt,     timers[idx].redAt,     0, 86400);
-        const newFlashAt  = safeInt(o.flashAt,   timers[idx].flashAt,   0, 86400);
-        const newFlashRate= safeInt(o.flashRate, timers[idx].flashRate, 100, 10000);
+        const hasSubs = timer.subtimers.length > 0;
+        const newDuration = hasSubs ? timer.duration : safeInt(o.duration, timer.duration, 1, 86400);
+        const newName     = safeName(o.name, timer.name);
+        const newMessage  = String(o.message ?? timer.message).slice(0, 50000);
+        const newYellow   = safeInt(o.yellowAt,  timer.yellowAt,  0, 86400);
+        const newRed      = safeInt(o.redAt,     timer.redAt,     0, 86400);
+        const newFlashAt  = safeInt(o.flashAt,   timer.flashAt,   0, 86400);
+        const newFlashRate= safeInt(o.flashRate, timer.flashRate, 100, 10000);
         stmts.update.run({ id: msg.id, name: newName, duration: newDuration, message: newMessage, yellow_at: newYellow, red_at: newRed, flash_at: newFlashAt, flash_rate: newFlashRate });
-        Object.assign(timers[idx], { name: newName, duration: newDuration, message: newMessage, yellowAt: newYellow, redAt: newRed, flashAt: newFlashAt, flashRate: newFlashRate });
+        const durationChanged = newDuration !== oldDuration;
+        Object.assign(timer, { name: newName, duration: newDuration, message: newMessage, yellowAt: newYellow, redAt: newRed, flashAt: newFlashAt, flashRate: newFlashRate });
         // Only reset remaining if not running AND duration actually changed AND timer hasn't been partially run
-        const durationChanged = o.duration !== undefined && o.duration !== timers[idx].duration;
-        if (!wasRunning && !wasPartiallyRun) timers[idx].remaining = timers[idx].duration;
-        else if (!wasRunning && durationChanged) timers[idx].remaining = timers[idx].duration;
+        if (!wasRunning && !wasPartiallyRun) timer.remaining = timer.duration;
+        else if (!wasRunning && durationChanged) timer.remaining = timer.duration;
         broadcastState();
         break;
       }
@@ -574,10 +731,20 @@ wss.on('connection', ws => {
 
       case 'reorder': {
         const { from, to } = msg;
-        if (from < 0 || to < 0 || from >= timers.length || to >= timers.length) break;
-        [timers[from], timers[to]] = [timers[to], timers[from]];
-        if (activeTimerIndex === from) activeTimerIndex = to;
-        else if (activeTimerIndex === to) activeTimerIndex = from;
+        if (from < 0 || to < 0 || from >= timers.length || to >= timers.length || from === to) break;
+        // Splice-based move (insert, not swap) for proper drag-and-drop behavior
+        const [moved] = timers.splice(from, 1);
+        timers.splice(to, 0, moved);
+        // Fix activeTimerIndex to follow the active timer through the move
+        if (activeTimerIndex !== null) {
+          if (activeTimerIndex === from) {
+            activeTimerIndex = to;
+          } else if (from < activeTimerIndex && to >= activeTimerIndex) {
+            activeTimerIndex--;
+          } else if (from > activeTimerIndex && to <= activeTimerIndex) {
+            activeTimerIndex++;
+          }
+        }
         saveTimerOrder();
         broadcastState();
         break;
@@ -667,11 +834,18 @@ wss.on('connection', ws => {
         const t = timers.find(t => t.id === msg.parentId);
         if (!t) break;
         const { from, to } = msg;
-        if (from < 0 || to < 0 || from >= t.subtimers.length || to >= t.subtimers.length) break;
-        [t.subtimers[from], t.subtimers[to]] = [t.subtimers[to], t.subtimers[from]];
+        if (from < 0 || to < 0 || from >= t.subtimers.length || to >= t.subtimers.length || from === to) break;
+        // Splice-based move (insert, not swap) — matches parent reorder behavior
+        const [moved] = t.subtimers.splice(from, 1);
+        t.subtimers.splice(to, 0, moved);
         if (activeTimerIndex !== null && timers[activeTimerIndex].id === msg.parentId) {
-          if (activeSubtimerIndex === from) activeSubtimerIndex = to;
-          else if (activeSubtimerIndex === to) activeSubtimerIndex = from;
+          if (activeSubtimerIndex === from) {
+            activeSubtimerIndex = to;
+          } else if (from < activeSubtimerIndex && to >= activeSubtimerIndex) {
+            activeSubtimerIndex--;
+          } else if (from > activeSubtimerIndex && to <= activeSubtimerIndex) {
+            activeSubtimerIndex++;
+          }
         }
         saveSubtimerOrder(msg.parentId);
         broadcastState();
@@ -805,8 +979,24 @@ wss.on('connection', ws => {
         if (!t) break;
         const sub = getActiveSubtimer();
         const target = sub || t;
-        target.remaining = Math.min(target.duration, target.remaining + 30);
-        if (sub) t.remaining = computeParentRemaining(t);
+        // Extend both remaining AND duration so +30s genuinely adds time
+        target.duration  += 30;
+        target.remaining += 30;
+        // If this is a subtimer, recalc the parent's duration/remaining too
+        if (sub) {
+          recalcParentDuration(t.id);
+          t.remaining = computeParentRemaining(t);
+        } else {
+          // Persist the new duration to DB for parent timers without subtimers
+          if (!t.subtimers.length) {
+            stmts.updateDuration.run({ duration: t.duration, id: t.id });
+          }
+        }
+        // If the timer was finished, revive it
+        if (target.status === 'finished') {
+          target.status = 'idle';
+          if (sub) t.status = 'idle';
+        }
         broadcast({ type: 'tick', timers, activeTimerIndex, activeSubtimerIndex });
         break;
       }
@@ -886,6 +1076,8 @@ wss.on('connection', ws => {
         const name = String(msg.name || '').trim().slice(0, 100);
         if (!name) break;
         if (handQueue.find(e => e.name.toLowerCase() === name.toLowerCase())) break;
+        // Enforce max queue size to prevent memory exhaustion
+        if (handQueue.length >= MAX_HAND_QUEUE_SIZE) break;
         handQueue.push({ name, raisedAt: Date.now() });
         ws._handRaiseName = name; // track on this connection for lower_hand auth
         broadcastHandQueue();
@@ -896,13 +1088,14 @@ wss.on('connection', ws => {
         const name = String(msg.name || '').trim().slice(0, 100);
         if (!name) break;
         // Only allow lowering your own hand (matched by WS connection) OR operator clear
-        // Operator sends lower_hand without a name match — we check ws._isOperator
         const ownHand = ws._handRaiseName && ws._handRaiseName.toLowerCase() === name.toLowerCase();
         const isOperator = ws._isOperator === true;
         if (!ownHand && !isOperator) break;
+        const prevLen = handQueue.length;
         handQueue = handQueue.filter(e => e.name.toLowerCase() !== name.toLowerCase());
         if (ownHand) ws._handRaiseName = null;
-        broadcastHandQueue();
+        // Only broadcast if queue actually changed
+        if (handQueue.length !== prevLen) broadcastHandQueue();
         break;
       }
 
@@ -914,8 +1107,22 @@ wss.on('connection', ws => {
       }
 
       case 'identify_operator': {
+        // Accept either the global OPERATOR_SECRET (for no-auth mode)
+        // or any valid per-session operator secret
         if (msg.secret === OPERATOR_SECRET) {
           ws._isOperator = true;
+        } else if (msg.secret) {
+          // Check if this matches any active session's operator secret
+          for (const [, session] of sessions) {
+            if (session.operatorSecret && session.operatorSecret === msg.secret && Date.now() <= session.expiresAt) {
+              ws._isOperator = true;
+              break;
+            }
+          }
+        }
+        // Send full state with settings now that operator is verified
+        if (ws._isOperator) {
+          ws.send(JSON.stringify({ type: 'state', timers, activeTimerIndex, activeSubtimerIndex, settings }));
         }
         break;
       }
