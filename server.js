@@ -5,7 +5,6 @@ const path = require('path');
 const Database = require('better-sqlite3');
 
 const crypto = require('crypto');
-const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
@@ -683,15 +682,25 @@ wss.on('connection', ws => {
       case 'select': {
         const idx = timers.findIndex(t => t.id === msg.id);
         if (idx === -1) break;
+        // Toggle off if already active
+        if (activeTimerIndex === idx) {
+          stopInterval();
+          const t = timers[idx];
+          if (t.status === 'running') t.status = 'idle';
+          t.subtimers.forEach(s => { if (s.status === 'running') s.status = 'idle'; });
+          activeTimerIndex = null;
+          activeSubtimerIndex = null;
+          broadcastState();
+          break;
+        }
         stopInterval();
-        if (activeTimerIndex !== null && timers[activeTimerIndex] && activeTimerIndex !== idx) {
+        if (activeTimerIndex !== null && timers[activeTimerIndex]) {
           const prev = timers[activeTimerIndex];
           if (prev.status === 'running') prev.status = 'idle';
           prev.subtimers.forEach(s => { if (s.status === 'running') s.status = 'idle'; });
         }
         activeTimerIndex = idx;
         const newT = timers[idx];
-        // Restore to the correct subtimer position — find first non-finished, or last if all finished
         if (newT.subtimers.length > 0) {
           const firstUnfinished = newT.subtimers.findIndex(s => s.status !== 'finished');
           activeSubtimerIndex = firstUnfinished !== -1 ? firstUnfinished : newT.subtimers.length - 1;
@@ -924,18 +933,4 @@ server.listen(PORT, () => {
   console.log(`  Operator: http://localhost:${PORT}/operator.html`);
   console.log(`  Display:  http://localhost:${PORT}/display.html`);
   console.log(`  Database: ${DB_PATH}`);
-
-  const markedCandidates = [
-    path.join(__dirname, 'node_modules/marked/marked.min.js'),
-    path.join(__dirname, 'node_modules/marked/lib/marked.umd.js'),
-    path.join(__dirname, 'node_modules/marked/lib/marked.cjs'),
-    path.join(__dirname, 'node_modules/marked/src/marked.min.js'),
-  ];
-  const markedFile = markedCandidates.find(p => { try { fs.accessSync(p); return true; } catch { return false; } });
-  if (markedFile) console.log(`  marked:   ${markedFile}`);
-  else console.warn('  WARNING: marked browser build not found in node_modules');
-
-  const purifyFile = path.join(__dirname, 'node_modules/dompurify/dist/purify.min.js');
-  if (fs.existsSync(purifyFile)) console.log(`  purify:   ${purifyFile}`);
-  else console.warn('  WARNING: DOMPurify not found in node_modules');
 });

@@ -1480,7 +1480,7 @@ function renderQueue() {
         <span class="item-status status-${tstatus}">${tstatus}</span>
         <div class="item-actions">
           ${hasSubs ? `<button class="queue-subtimer-toggle" data-id="${tid}" title="${isExpanded ? 'Collapse' : 'Expand'} subtimers">${isExpanded ? '▲' : '▼'} ${t.subtimers.length}</button>` : ''}
-          <button class="item-btn set-active-btn ${i === activeTimerIndex ? 'is-active' : ''}" data-id="${tid}" title="Set as active timer on display">▶ Live</button>
+          <button class="item-btn set-active-btn ${i === activeTimerIndex ? 'is-active' : ''}" data-id="${tid}" title="${i === activeTimerIndex ? 'Remove from display' : 'Set as active timer on display'}">${i === activeTimerIndex ? '⏹ Live' : '▶ Live'}</button>
           <button class="item-btn move-btn" data-id="${tid}" data-dir="up" title="Move up">↑</button>
           <button class="item-btn move-btn" data-id="${tid}" data-dir="down" title="Move down">↓</button>
           <button class="item-btn del del-btn" data-id="${tid}" title="Delete">✕</button>
