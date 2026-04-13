@@ -5,8 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ShowClock — Display</title>
 <link rel="icon" type="image/x-icon" href="/favicon.ico">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;700;800&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/fonts/jetbrains-mono/300.css">
+<link rel="stylesheet" href="/fonts/jetbrains-mono/400.css">
+<link rel="stylesheet" href="/fonts/jetbrains-mono/700.css">
+<link rel="stylesheet" href="/fonts/jetbrains-mono/800.css">
+<link rel="stylesheet" href="/fonts/syne/400.css">
+<link rel="stylesheet" href="/fonts/syne/700.css">
+<link rel="stylesheet" href="/fonts/syne/800.css">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -524,7 +529,8 @@
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+<script src="/lib/marked.min.js"></script>
+<script src="/lib/purify.min.js"></script>
 <script>
 let state = { timers: [], activeTimerIndex: null, activeSubtimerIndex: null };
 
@@ -565,7 +571,12 @@ function renderHandQueue() {
 }
 
 function esc(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 async function resolveIdentity() {
@@ -654,12 +665,15 @@ document.getElementById('changename-btn').addEventListener('click', () => {
 
 // ── WebSocket ────────────────────────────────────────────────────────────
 let ws;
+let reconnectDelay = 2000;
+const MAX_RECONNECT_DELAY = 30000;
 
 function connect() {
   const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(`${wsProtocol}//${location.host}`);
 
   ws.addEventListener('open', () => {
+    reconnectDelay = 2000; // reset backoff on successful connection
     document.getElementById('conn-dot').className   = 'connected';
     document.getElementById('conn-label').textContent = 'Live';
   });
@@ -667,7 +681,8 @@ function connect() {
   ws.addEventListener('close', () => {
     document.getElementById('conn-dot').className   = '';
     document.getElementById('conn-label').textContent = 'Reconnecting…';
-    setTimeout(connect, 2000);
+    setTimeout(connect, reconnectDelay);
+    reconnectDelay = Math.min(reconnectDelay * 1.5, MAX_RECONNECT_DELAY);
   });
 
   ws.addEventListener('message', e => {
@@ -726,7 +741,8 @@ function render() {
   // Color based on active entity's thresholds
   const color = getColor(active);
   document.documentElement.style.setProperty('--current-color', color);
-  document.documentElement.style.setProperty('--flash-rate', `${active.flashRate}ms`);
+  const safeFlashRate = Math.max(100, Math.min(10000, Math.floor(Number(active.flashRate)) || 1000));
+  document.documentElement.style.setProperty('--flash-rate', `${safeFlashRate}ms`);
 
   // Parent label (only when subtimer is active)
   const parentLabelEl = document.getElementById('parent-label');
@@ -751,7 +767,7 @@ function render() {
   const notesEl = document.getElementById('notes-panel');
   const markdown = (t.message || '').trim();
   if (markdown) {
-    notesEl.innerHTML = marked.parse(markdown);
+    notesEl.innerHTML = DOMPurify.sanitize(marked.parse(markdown));
     notesEl.classList.add('has-content');
   } else {
     notesEl.innerHTML = '';
@@ -769,10 +785,13 @@ function render() {
     totalEl.classList.remove('visible');
   }
 
+  const VALID_STATUSES = new Set(['idle', 'running', 'paused', 'finished']);
+
   // Status badge
   const badge = document.getElementById('status-badge');
-  badge.textContent = t.status.toUpperCase();
-  badge.className   = t.status;
+  const safeStatus = VALID_STATUSES.has(t.status) ? t.status : 'idle';
+  badge.textContent = safeStatus.toUpperCase();
+  badge.className   = safeStatus;
 
   // Main progress bar — active entity's own progress
   const activePct = active.duration > 0 ? (active.remaining / active.duration) * 100 : 0;

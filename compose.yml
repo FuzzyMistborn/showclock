@@ -8,6 +8,12 @@ services:
     environment:
       - PORT=3000
       - DB_PATH=/data/showclock.db
+      # Optional: set a password to protect the operator page
+      # - OPERATOR_PASSWORD=your-password-here
+      # Optional: session lifetime in hours (default: 24)
+      # - SESSION_TTL_HOURS=24
+      # Optional: fix the internal WS auth token so it persists across restarts
+      # - OPERATOR_SECRET=your-random-secret-here
     volumes:
       - showclock_data:/data
 
