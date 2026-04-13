@@ -14,6 +14,9 @@ services:
       # - SESSION_TTL_HOURS=24
       # Optional: fix the internal WS auth token so it persists across restarts
       # - OPERATOR_SECRET=your-random-secret-here
+      # Optional: set to true if running behind a TLS-terminating reverse proxy
+      # Enables Secure cookie flag, HSTS header, and X-Forwarded-For trust
+      # - TRUST_PROXY=true
     volumes:
       - showclock_data:/data
 
