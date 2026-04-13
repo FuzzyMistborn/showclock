@@ -4,12 +4,196 @@ const WebSocket = require('ws');
 const path = require('path');
 const Database = require('better-sqlite3');
 
+const crypto = require('crypto');
+const fs = require('fs');
+
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
 
-app.use(express.json());
+// ── Operator secret (set via env var, random fallback) ────────────────────────
+const OPERATOR_SECRET = process.env.OPERATOR_SECRET || (() => {
+  const s = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+  console.log(`[showclock] No OPERATOR_SECRET set — using random: ${s}`);
+  return s;
+})();
+
+// ── Password auth (optional — only active if OPERATOR_PASSWORD is set) ────────
+const OPERATOR_PASSWORD = process.env.OPERATOR_PASSWORD || null;
+const sessions = new Map(); // token → expiresAt
+
+function generateToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+function isValidSession(token) {
+  if (!OPERATOR_PASSWORD) return true; // auth disabled
+  if (!token) return false;
+  const exp = sessions.get(token);
+  if (!exp) return false;
+  if (Date.now() > exp) { sessions.delete(token); return false; }
+  return true;
+}
+
+function getSessionToken(req) {
+  // Check cookie
+  const cookie = req.headers.cookie || '';
+  const match = cookie.match(/(?:^|;\s*)sc_session=([^;]+)/);
+  return match ? match[1] : null;
+}
+
+function requireAuth(req, res, next) {
+  if (!OPERATOR_PASSWORD) return next();
+  if (isValidSession(getSessionToken(req))) return next();
+  // Redirect to login, preserving the intended destination
+  res.redirect(`/login?next=${encodeURIComponent(req.path)}`);
+}
+
+// Periodically clean up expired sessions
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, exp] of sessions) {
+    if (now > exp) sessions.delete(token);
+  }
+}, 60 * 60 * 1000); // every hour
+
+const wss = new WebSocket.Server({
+  server,
+  maxPayload: 512 * 1024, // 512KB max WS message size
+});
+
+app.use(express.json({ limit: '512kb' }));
+
+// ── Serve client-side libs and fonts from node_modules ────────────────────────
+// Registered before auth/security middleware so they're always accessible
+
+app.get('/lib/marked.min.js', (req, res) => {
+  res.type('application/javascript').sendFile(
+    path.join(__dirname, 'node_modules/marked/lib/marked.umd.js')
+  );
+});
+
+app.get('/lib/purify.min.js', (req, res) => {
+  res.type('application/javascript').sendFile(
+    path.join(__dirname, 'node_modules/dompurify/dist/purify.min.js')
+  );
+});
+
+app.use('/fonts/jetbrains-mono', express.static(
+  path.join(__dirname, 'node_modules/@fontsource/jetbrains-mono')
+));
+app.use('/fonts/syne', express.static(
+  path.join(__dirname, 'node_modules/@fontsource/syne')
+));
+
+// ── Security headers ──────────────────────────────────────────────────────────
+app.use((req, res, next) => {
+  res.setHeader('Content-Security-Policy', [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline'",
+    "font-src 'self'",
+    "connect-src 'self' ws: wss:",
+    "img-src 'self' data:",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+  ].join('; '));
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  next();
+});
+
+// Intercept operator.html before static middleware can serve it
+app.use((req, res, next) => {
+  if (req.path === '/operator.html') {
+    return requireAuth(req, res, next);
+  }
+  next();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
+
+app.use(express.urlencoded({ extended: false, limit: '4kb' }));
+
+// ── Auth routes ───────────────────────────────────────────────────────────────
+app.get('/login', (req, res) => {
+  if (!OPERATOR_PASSWORD) return res.redirect('/operator.html');
+  if (isValidSession(getSessionToken(req))) return res.redirect(req.query.next || '/operator.html');
+  const next = req.query.next ? `?next=${encodeURIComponent(req.query.next)}` : '';
+  const error = req.query.error ? '<p class="error">Incorrect password. Try again.</p>' : '';
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ShowClock — Login</title>
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{background:#050608;color:#f0f2f8;font-family:'Segoe UI',system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh}
+  .box{background:#0e1014;border:1px solid #1e2230;border-radius:16px;padding:40px 36px;width:min(380px,90vw);display:flex;flex-direction:column;gap:20px}
+  .logo{display:flex;align-items:center;gap:10px;font-size:18px;font-weight:700;letter-spacing:0.04em}
+  .logo img{width:32px;height:32px;border-radius:6px}
+  h1{font-size:15px;font-weight:600;color:#6b7280}
+  label{font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#6b7280}
+  input[type=password]{width:100%;background:#050608;border:1px solid #1e2230;border-radius:8px;color:#f0f2f8;font-size:15px;padding:10px 14px;outline:none;transition:border-color 0.15s}
+  input[type=password]:focus{border-color:#6366f1}
+  button{background:#6366f1;border:none;border-radius:8px;color:#fff;cursor:pointer;font-size:15px;font-weight:700;padding:12px;transition:opacity 0.15s;width:100%}
+  button:hover{opacity:0.85}
+  .error{color:#ef4444;font-size:13px;text-align:center}
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="logo"><img src="/showclock.png" alt="">ShowClock</div>
+  <h1>Operator login</h1>
+  ${error}
+  <form method="POST" action="/login${next}">
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <label for="pw">Password</label>
+      <input type="password" id="pw" name="password" autofocus autocomplete="current-password">
+    </div>
+    <div style="margin-top:16px"><button type="submit">Sign in</button></div>
+  </form>
+</div>
+</body></html>`);
+});
+
+app.post('/login', (req, res) => {
+  if (!OPERATOR_PASSWORD) return res.redirect('/operator.html');
+  const supplied = String(req.body.password || '');
+  // Constant-time comparison to prevent timing attacks
+  const a = Buffer.from(supplied.padEnd(64));
+  const b = Buffer.from(OPERATOR_PASSWORD.padEnd(64));
+  const match = a.length === b.length && crypto.timingSafeEqual(a, b) && supplied === OPERATOR_PASSWORD;
+  if (!match) {
+    const next = req.query.next ? `&next=${encodeURIComponent(req.query.next)}` : '';
+    return res.redirect(`/login?error=1${next}`);
+  }
+  const token = generateToken();
+  const SESSION_TTL = parseInt(process.env.SESSION_TTL_HOURS || '24') * 60 * 60 * 1000;
+  sessions.set(token, Date.now() + SESSION_TTL);
+  const next = req.query.next || '/operator.html';
+  res.setHeader('Set-Cookie', `sc_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_TTL / 1000}`);
+  res.redirect(next);
+});
+
+app.get('/logout', (req, res) => {
+  const token = getSessionToken(req);
+  if (token) sessions.delete(token);
+  res.setHeader('Set-Cookie', 'sc_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');
+  res.redirect('/login');
+});
+
+// ── Protected operator routes ─────────────────────────────────────────────────
+app.get('/operator.html', requireAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'operator.html'));
+});
+
+app.get('/api/operator-token', requireAuth, (req, res) => {
+  res.json({ token: OPERATOR_SECRET });
+});
 
 // ── Database ──────────────────────────────────────────────────────────────────
 const DB_PATH = process.env.DB_PATH || '/data/showclock.db';
@@ -204,6 +388,17 @@ function computeParentRemaining(t) {
   return t.subtimers.reduce((sum, s) => sum + s.remaining, 0);
 }
 
+// ── Input validation helpers ──────────────────────────────────────────────────
+function safeInt(val, fallback, min = 0, max = 86400) {
+  const n = Math.floor(Number(val));
+  return isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback;
+}
+
+function safeName(val, fallback = 'Untitled', maxLen = 200) {
+  const s = String(val ?? fallback).trim();
+  return s.slice(0, maxLen) || fallback;
+}
+
 // ── Timer engine ──────────────────────────────────────────────────────────────
 function startInterval() {
   if (timerInterval) return;
@@ -239,7 +434,7 @@ function startInterval() {
         }
       }
 
-      broadcast({ type: 'tick', timers, activeTimerIndex, activeSubtimerIndex, settings });
+      broadcast({ type: 'tick', timers, activeTimerIndex, activeSubtimerIndex });
     } catch (err) {
       console.error('Tick error:', err);
       stopInterval();
@@ -293,6 +488,11 @@ app.get('/api/identity', (req, res) => {
   res.json({ name, source: name ? (displayName ? 'tailscale' : 'email') : 'none' });
 });
 
+// REST endpoint — operator page fetches this to get the shared secret
+app.get('/api/operator-token', (req, res) => {
+  res.json({ token: OPERATOR_SECRET });
+});
+
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 wss.on('connection', ws => {
   ws.send(JSON.stringify({ type: 'state', timers, activeTimerIndex, activeSubtimerIndex, settings }));
@@ -311,13 +511,13 @@ wss.on('connection', ws => {
         const o = msg.timer || {};
         stmts.insert.run({
           sort_order: timers.length,
-          name:       o.name      ?? 'New Timer',
-          duration:   o.duration  ?? +s.default_duration,
-          message:    o.message   ?? '',
-          yellow_at:  o.yellowAt  ?? +s.default_yellow_at,
-          red_at:     o.redAt     ?? +s.default_red_at,
-          flash_at:   o.flashAt   ?? +s.default_flash_at,
-          flash_rate: o.flashRate ?? +s.default_flash_rate,
+          name:       safeName(o.name, 'New Timer'),
+          duration:   safeInt(o.duration,  +s.default_duration,  1, 86400),
+          message:    String(o.message ?? '').slice(0, 50000),
+          yellow_at:  safeInt(o.yellowAt,  +s.default_yellow_at, 0, 86400),
+          red_at:     safeInt(o.redAt,     +s.default_red_at,    0, 86400),
+          flash_at:   safeInt(o.flashAt,   +s.default_flash_at,  0, 86400),
+          flash_rate: safeInt(o.flashRate, +s.default_flash_rate, 100, 10000),
         });
         timers = stmts.all.all().map((row) => {
           const existing = timers.find(t => t.id === row.id);
@@ -330,7 +530,7 @@ wss.on('connection', ws => {
       case 'update_notes': {
         const idx = timers.findIndex(t => t.id === msg.id);
         if (idx === -1) break;
-        timers[idx].message = msg.message ?? '';
+        timers[idx].message = String(msg.message ?? '').slice(0, 50000);
         stmts.update.run({ id: timers[idx].id, name: timers[idx].name, duration: timers[idx].duration, message: timers[idx].message, yellow_at: timers[idx].yellowAt, red_at: timers[idx].redAt, flash_at: timers[idx].flashAt, flash_rate: timers[idx].flashRate });
         broadcastState();
         break;
@@ -343,9 +543,15 @@ wss.on('connection', ws => {
         const wasPartiallyRun = timers[idx].remaining < timers[idx].duration;
         const o = msg.timer;
         const hasSubs = timers[idx].subtimers.length > 0;
-        const newDuration = hasSubs ? timers[idx].duration : (o.duration ?? timers[idx].duration);
-        stmts.update.run({ id: msg.id, name: o.name ?? timers[idx].name, duration: newDuration, message: o.message ?? timers[idx].message, yellow_at: o.yellowAt ?? timers[idx].yellowAt, red_at: o.redAt ?? timers[idx].redAt, flash_at: o.flashAt ?? timers[idx].flashAt, flash_rate: o.flashRate ?? timers[idx].flashRate });
-        Object.assign(timers[idx], { name: o.name ?? timers[idx].name, duration: newDuration, message: o.message ?? timers[idx].message, yellowAt: o.yellowAt ?? timers[idx].yellowAt, redAt: o.redAt ?? timers[idx].redAt, flashAt: o.flashAt ?? timers[idx].flashAt, flashRate: o.flashRate ?? timers[idx].flashRate });
+        const newDuration = hasSubs ? timers[idx].duration : safeInt(o.duration, timers[idx].duration, 1, 86400);
+        const newName     = safeName(o.name, timers[idx].name);
+        const newMessage  = String(o.message ?? timers[idx].message).slice(0, 50000);
+        const newYellow   = safeInt(o.yellowAt,  timers[idx].yellowAt,  0, 86400);
+        const newRed      = safeInt(o.redAt,     timers[idx].redAt,     0, 86400);
+        const newFlashAt  = safeInt(o.flashAt,   timers[idx].flashAt,   0, 86400);
+        const newFlashRate= safeInt(o.flashRate, timers[idx].flashRate, 100, 10000);
+        stmts.update.run({ id: msg.id, name: newName, duration: newDuration, message: newMessage, yellow_at: newYellow, red_at: newRed, flash_at: newFlashAt, flash_rate: newFlashRate });
+        Object.assign(timers[idx], { name: newName, duration: newDuration, message: newMessage, yellowAt: newYellow, redAt: newRed, flashAt: newFlashAt, flashRate: newFlashRate });
         // Only reset remaining if not running AND duration actually changed AND timer hasn't been partially run
         const durationChanged = o.duration !== undefined && o.duration !== timers[idx].duration;
         if (!wasRunning && !wasPartiallyRun) timers[idx].remaining = timers[idx].duration;
@@ -386,12 +592,12 @@ wss.on('connection', ws => {
         const info = stmts.subInsert.run({
           parent_id:  msg.parentId,
           sort_order: t.subtimers.length,
-          name:       msg.subtimer?.name      ?? 'Part',
-          duration:   msg.subtimer?.duration  ?? 60,
-          yellow_at:  msg.subtimer?.yellowAt  ?? +s.default_yellow_at,
-          red_at:     msg.subtimer?.redAt     ?? +s.default_red_at,
-          flash_at:   msg.subtimer?.flashAt   ?? +s.default_flash_at,
-          flash_rate: msg.subtimer?.flashRate ?? +s.default_flash_rate,
+          name:       safeName(msg.subtimer?.name, 'Part'),
+          duration:   safeInt(msg.subtimer?.duration,  60,                 1, 86400),
+          yellow_at:  safeInt(msg.subtimer?.yellowAt,  +s.default_yellow_at, 0, 86400),
+          red_at:     safeInt(msg.subtimer?.redAt,     +s.default_red_at,    0, 86400),
+          flash_at:   safeInt(msg.subtimer?.flashAt,   +s.default_flash_at,  0, 86400),
+          flash_rate: safeInt(msg.subtimer?.flashRate, +s.default_flash_rate, 100, 10000),
         });
         // Reload subtimers for this parent — preserving runtime state of existing ones
         const existingSubs = t.subtimers;
@@ -410,23 +616,14 @@ wss.on('connection', ws => {
         const sIdx = t.subtimers.findIndex(s => s.id === msg.id);
         if (sIdx === -1) break;
         const o = msg.subtimer;
-        stmts.subUpdate.run({
-          id:         msg.id,
-          name:       o.name      ?? t.subtimers[sIdx].name,
-          duration:   o.duration  ?? t.subtimers[sIdx].duration,
-          yellow_at:  o.yellowAt  ?? t.subtimers[sIdx].yellowAt,
-          red_at:     o.redAt     ?? t.subtimers[sIdx].redAt,
-          flash_at:   o.flashAt   ?? t.subtimers[sIdx].flashAt,
-          flash_rate: o.flashRate ?? t.subtimers[sIdx].flashRate,
-        });
-        Object.assign(t.subtimers[sIdx], {
-          name:      o.name      ?? t.subtimers[sIdx].name,
-          duration:  o.duration  ?? t.subtimers[sIdx].duration,
-          yellowAt:  o.yellowAt  ?? t.subtimers[sIdx].yellowAt,
-          redAt:     o.redAt     ?? t.subtimers[sIdx].redAt,
-          flashAt:   o.flashAt   ?? t.subtimers[sIdx].flashAt,
-          flashRate: o.flashRate ?? t.subtimers[sIdx].flashRate,
-        });
+        const subName      = safeName(o.name, t.subtimers[sIdx].name);
+        const subDuration  = safeInt(o.duration,  t.subtimers[sIdx].duration,  1, 86400);
+        const subYellow    = safeInt(o.yellowAt,  t.subtimers[sIdx].yellowAt,  0, 86400);
+        const subRed       = safeInt(o.redAt,     t.subtimers[sIdx].redAt,     0, 86400);
+        const subFlashAt   = safeInt(o.flashAt,   t.subtimers[sIdx].flashAt,   0, 86400);
+        const subFlashRate = safeInt(o.flashRate, t.subtimers[sIdx].flashRate, 100, 10000);
+        stmts.subUpdate.run({ id: msg.id, name: subName, duration: subDuration, yellow_at: subYellow, red_at: subRed, flash_at: subFlashAt, flash_rate: subFlashRate });
+        Object.assign(t.subtimers[sIdx], { name: subName, duration: subDuration, yellowAt: subYellow, redAt: subRed, flashAt: subFlashAt, flashRate: subFlashRate });
         // Only reset remaining if not currently running
         const isActiveSub = activeTimerIndex !== null && timers[activeTimerIndex].id === msg.parentId && activeSubtimerIndex === sIdx;
         if (!isActiveSub) t.subtimers[sIdx].remaining = t.subtimers[sIdx].duration;
@@ -590,7 +787,7 @@ wss.on('connection', ws => {
           if (target.remaining === 0) { target.status = 'finished'; stopInterval(); }
           else if (target.status === 'finished') target.status = 'idle';
         }
-        broadcast({ type: 'tick', timers, activeTimerIndex, activeSubtimerIndex, settings });
+        broadcast({ type: 'tick', timers, activeTimerIndex, activeSubtimerIndex });
         break;
       }
 
@@ -601,7 +798,7 @@ wss.on('connection', ws => {
         const target = sub || t;
         target.remaining = Math.min(target.duration, target.remaining + 30);
         if (sub) t.remaining = computeParentRemaining(t);
-        broadcast({ type: 'tick', timers, activeTimerIndex, activeSubtimerIndex, settings });
+        broadcast({ type: 'tick', timers, activeTimerIndex, activeSubtimerIndex });
         break;
       }
 
@@ -659,7 +856,16 @@ wss.on('connection', ws => {
         const allowed = ['default_duration','default_yellow_at','default_red_at','default_flash_at','default_flash_rate','auto_start','subtimers_expanded'];
         const tx = db.transaction(() => {
           allowed.forEach(k => {
-            if (msg.settings[k] !== undefined) saveSetting(k, msg.settings[k]);
+            if (msg.settings[k] === undefined) return;
+            let v = msg.settings[k];
+            if (k === 'auto_start' || k === 'subtimers_expanded') {
+              v = (v === 'true' || v === true) ? 'true' : 'false';
+            } else {
+              const min = k === 'default_flash_rate' ? 100 : 0;
+              const max = k === 'default_flash_rate' ? 10000 : 86400;
+              v = String(safeInt(v, +SETTING_DEFAULTS[k], min, max));
+            }
+            saveSetting(k, v);
           });
         });
         tx();
@@ -668,25 +874,40 @@ wss.on('connection', ws => {
         break;
       }
       case 'raise_hand': {
-        const name = (msg.name || '').trim();
+        const name = String(msg.name || '').trim().slice(0, 100);
         if (!name) break;
-        // Prevent duplicates
         if (handQueue.find(e => e.name.toLowerCase() === name.toLowerCase())) break;
         handQueue.push({ name, raisedAt: Date.now() });
+        ws._handRaiseName = name; // track on this connection for lower_hand auth
         broadcastHandQueue();
         break;
       }
 
       case 'lower_hand': {
-        const name = (msg.name || '').trim();
+        const name = String(msg.name || '').trim().slice(0, 100);
+        if (!name) break;
+        // Only allow lowering your own hand (matched by WS connection) OR operator clear
+        // Operator sends lower_hand without a name match — we check ws._isOperator
+        const ownHand = ws._handRaiseName && ws._handRaiseName.toLowerCase() === name.toLowerCase();
+        const isOperator = ws._isOperator === true;
+        if (!ownHand && !isOperator) break;
         handQueue = handQueue.filter(e => e.name.toLowerCase() !== name.toLowerCase());
+        if (ownHand) ws._handRaiseName = null;
         broadcastHandQueue();
         break;
       }
 
       case 'clear_queue': {
+        if (!ws._isOperator) break; // only operator can clear all
         handQueue = [];
         broadcastHandQueue();
+        break;
+      }
+
+      case 'identify_operator': {
+        if (msg.secret === OPERATOR_SECRET) {
+          ws._isOperator = true;
+        }
         break;
       }
 
@@ -703,4 +924,18 @@ server.listen(PORT, () => {
   console.log(`  Operator: http://localhost:${PORT}/operator.html`);
   console.log(`  Display:  http://localhost:${PORT}/display.html`);
   console.log(`  Database: ${DB_PATH}`);
+
+  const markedCandidates = [
+    path.join(__dirname, 'node_modules/marked/marked.min.js'),
+    path.join(__dirname, 'node_modules/marked/lib/marked.umd.js'),
+    path.join(__dirname, 'node_modules/marked/lib/marked.cjs'),
+    path.join(__dirname, 'node_modules/marked/src/marked.min.js'),
+  ];
+  const markedFile = markedCandidates.find(p => { try { fs.accessSync(p); return true; } catch { return false; } });
+  if (markedFile) console.log(`  marked:   ${markedFile}`);
+  else console.warn('  WARNING: marked browser build not found in node_modules');
+
+  const purifyFile = path.join(__dirname, 'node_modules/dompurify/dist/purify.min.js');
+  if (fs.existsSync(purifyFile)) console.log(`  purify:   ${purifyFile}`);
+  else console.warn('  WARNING: DOMPurify not found in node_modules');
 });

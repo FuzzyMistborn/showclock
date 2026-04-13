@@ -5,8 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ShowClock — Operator</title>
 <link rel="icon" type="image/x-icon" href="/favicon.ico">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="preload" href="/fonts/jetbrains-mono/400.css" as="style">
+<link rel="preload" href="/fonts/syne/400.css" as="style">
+<link rel="stylesheet" href="/fonts/jetbrains-mono/400.css">
+<link rel="stylesheet" href="/fonts/jetbrains-mono/600.css">
+<link rel="stylesheet" href="/fonts/jetbrains-mono/700.css">
+<link rel="stylesheet" href="/fonts/syne/400.css">
+<link rel="stylesheet" href="/fonts/syne/600.css">
+<link rel="stylesheet" href="/fonts/syne/700.css">
+<link rel="stylesheet" href="/fonts/syne/800.css">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -1002,6 +1009,9 @@
   <img src="/showclock.png" style="height:24px;width:24px;border-radius:4px;" alt="ShowClock">
   <h1>ShowClock</h1>
   <span class="pill">OPERATOR</span>
+  <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+    <a href="/logout" style="font-size:11px;color:var(--muted);text-decoration:none;letter-spacing:0.06em;text-transform:uppercase;font-weight:700;opacity:0.6;transition:opacity 0.15s;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6">Sign out</a>
+  </div>
   <div class="spacer"></div>
   <div class="hotkey-hint">
     <span><kbd>Space</kbd> Play/Pause</span>
@@ -1242,6 +1252,15 @@ let notesSyncTimeout = null;
 // ── WebSocket ─────────────────────────────────────────────────────────────
 const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
 const ws = new WebSocket(`${wsProtocol}//${location.host}`);
+ws.addEventListener('open', async () => {
+  try {
+    const res = await fetch('/api/operator-token');
+    const { token } = await res.json();
+    send({ action: 'identify_operator', secret: token });
+  } catch (e) {
+    console.error('Failed to fetch operator token:', e);
+  }
+});
 ws.addEventListener('message', e => {
   try {
     const msg = JSON.parse(e.data);
@@ -1271,14 +1290,15 @@ ws.addEventListener('message', e => {
           const row = qEl.querySelector(`.timer-item[data-index="${i}"]`);
           if (!row) return;
           const badge = row.querySelector('.item-status');
-          if (badge) { badge.textContent = t.status; badge.className = `item-status status-${t.status}`; }
+          const tstatus = safeStatus(t.status);
+          if (badge) { badge.textContent = tstatus; badge.className = `item-status status-${tstatus}`; }
           if (expandedTimers.has(t.id)) {
+            const tid = safeId(t.id);
             t.subtimers.forEach((s, si) => {
-              const subRow = qEl.querySelector(`.queue-sub-item[data-sub-index="${si}"][data-parent-id="${t.id}"]`);
+              const subRow = qEl.querySelector(`.queue-sub-item[data-sub-index="${si}"][data-parent-id="${tid}"]`);
               if (!subRow) return;
               const dot = subRow.querySelector('.sub-status-dot');
-              if (dot) dot.className = `sub-status-dot ${s.status}`;
-              // Update active-sub highlight based on current activeSubtimerIndex
+              if (dot) dot.className = `sub-status-dot ${safeStatus(s.status)}`;
               const isActive = i === state.activeTimerIndex && si === state.activeSubtimerIndex;
               subRow.classList.toggle('active-sub', isActive);
               const liveBtn = subRow.querySelector('.sub-live-btn');
@@ -1413,6 +1433,10 @@ function render() {
 let expandedTimersInitialized = false;
 const expandedTimers = new Set();
 
+const VALID_STATUSES = new Set(['idle', 'running', 'paused', 'finished']);
+function safeStatus(s) { return VALID_STATUSES.has(s) ? s : 'idle'; }
+function safeId(id) { return String(Math.floor(Number(id)) || 0); }
+
 function renderQueue() {
   const qEl = document.getElementById('timer-queue');
   const { timers, activeTimerIndex, activeSubtimerIndex } = state;
@@ -1427,35 +1451,39 @@ function renderQueue() {
     const isExpanded = expandedTimers.has(t.id);
     const activeSub = (i === activeTimerIndex && activeSubtimerIndex !== null)
       ? t.subtimers[activeSubtimerIndex] : null;
+    const tid = safeId(t.id);
+    const tstatus = safeStatus(t.status);
 
     const subListHtml = hasSubs && isExpanded ? `
-      <div class="queue-sub-list" data-parent-id="${t.id}">
+      <div class="queue-sub-list" data-parent-id="${tid}">
         ${t.subtimers.map((s, si) => {
           const isActiveSub = i === activeTimerIndex && activeSubtimerIndex === si;
-          return `<div class="queue-sub-item ${isActiveSub ? 'active-sub' : ''}" data-parent-id="${t.id}" data-sub-id="${s.id}" data-sub-index="${si}">
-            <div class="sub-status-dot ${s.status}"></div>
+          const sid = safeId(s.id);
+          const sstatus = safeStatus(s.status);
+          return `<div class="queue-sub-item ${isActiveSub ? 'active-sub' : ''}" data-parent-id="${tid}" data-sub-id="${sid}" data-sub-index="${si}">
+            <div class="sub-status-dot ${sstatus}"></div>
             <span class="sub-item-name">${esc(s.name)}</span>
             <span class="sub-item-dur">${fmt(s.duration)}</span>
-            <button class="sub-live-btn ${isActiveSub ? 'is-active' : ''}" data-parent-id="${t.id}" data-sub-id="${s.id}" title="Jump to this subtimer">▶</button>
+            <button class="sub-live-btn ${isActiveSub ? 'is-active' : ''}" data-parent-id="${tid}" data-sub-id="${sid}" title="Jump to this subtimer">▶</button>
           </div>`;
         }).join('')}
       </div>` : '';
 
     return `
-    <div class="timer-item ${i === activeTimerIndex ? 'active' : ''} ${t.id === editingId ? 'editing' : ''}" data-id="${t.id}" data-index="${i}" draggable="false">
+    <div class="timer-item ${i === activeTimerIndex ? 'active' : ''} ${t.id === editingId ? 'editing' : ''}" data-id="${tid}" data-index="${i}" draggable="false">
       <div class="drag-handle" title="Drag to reorder" draggable="true" data-index="${i}">⠿</div>
       <div class="item-info">
         <div class="item-name">${esc(t.name)}${activeSub ? `<span style="color:var(--muted);font-weight:400;font-size:11px;margin-left:6px;">· ${esc(activeSub.name)}</span>` : ''}</div>
         <div class="item-duration">${fmt(t.duration)}</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-        <span class="item-status status-${t.status}">${t.status}</span>
+        <span class="item-status status-${tstatus}">${tstatus}</span>
         <div class="item-actions">
-          ${hasSubs ? `<button class="queue-subtimer-toggle" data-id="${t.id}" title="${isExpanded ? 'Collapse' : 'Expand'} subtimers">${isExpanded ? '▲' : '▼'} ${t.subtimers.length}</button>` : ''}
-          <button class="item-btn set-active-btn ${i === activeTimerIndex ? 'is-active' : ''}" data-id="${t.id}" title="Set as active timer on display">▶ Live</button>
-          <button class="item-btn move-btn" data-id="${t.id}" data-dir="up" title="Move up">↑</button>
-          <button class="item-btn move-btn" data-id="${t.id}" data-dir="down" title="Move down">↓</button>
-          <button class="item-btn del del-btn" data-id="${t.id}" title="Delete">✕</button>
+          ${hasSubs ? `<button class="queue-subtimer-toggle" data-id="${tid}" title="${isExpanded ? 'Collapse' : 'Expand'} subtimers">${isExpanded ? '▲' : '▼'} ${t.subtimers.length}</button>` : ''}
+          <button class="item-btn set-active-btn ${i === activeTimerIndex ? 'is-active' : ''}" data-id="${tid}" title="Set as active timer on display">▶ Live</button>
+          <button class="item-btn move-btn" data-id="${tid}" data-dir="up" title="Move up">↑</button>
+          <button class="item-btn move-btn" data-id="${tid}" data-dir="down" title="Move down">↓</button>
+          <button class="item-btn del del-btn" data-id="${tid}" title="Delete">✕</button>
         </div>
       </div>
     </div>
@@ -1648,7 +1676,8 @@ function renderActiveDisplay() {
   const flashTarget = activeSub || t;
   const shouldFlash = (t.status === 'running') && flashTarget.remaining <= flashTarget.flashAt && flashTarget.remaining > 0;
   if (shouldFlash) {
-    clock.style.setProperty('--flash-rate', `${flashTarget.flashRate}ms`);
+    const safeRate = Math.max(100, Math.min(10000, Math.floor(Number(flashTarget.flashRate)) || 1000));
+    clock.style.setProperty('--flash-rate', `${safeRate}ms`);
     clock.classList.add('flash');
   } else {
     clock.classList.remove('flash');
@@ -2005,7 +2034,12 @@ document.addEventListener('keydown', e => {
 
 // ── Util ──────────────────────────────────────────────────────────────────
 function esc(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 </script>
 </body>
