@@ -43,7 +43,7 @@
     font-family: var(--sans);
     display: grid;
     grid-template-columns: 320px 1fr;
-    grid-template-rows: 56px 1fr;
+    grid-template-rows: 56px auto 1fr;
     height: 100vh;
     overflow: hidden;
   }
@@ -102,6 +102,7 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    grid-row: 3 / 4;
   }
 
   .panel-header {
@@ -263,6 +264,7 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    grid-row: 3 / 4;
   }
 
   /* Active timer display */
@@ -600,6 +602,22 @@
   }
 
   /* Toast */
+  /* ── Multi-operator banner ── */
+  #multi-operator-banner {
+    display: none;
+    background: #2d2a10;
+    border-bottom: 1px solid var(--yellow);
+    color: var(--yellow);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 20px;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    align-items: center;
+    gap: 8px;
+  }
+  #multi-operator-banner.visible { display: flex; }
+
   #toast {
     position: fixed;
     bottom: 24px;
@@ -1021,10 +1039,20 @@
   <button class="btn-icon" id="btn-settings" title="Settings" style="margin-left:12px;font-size:18px;">⚙</button>
 </header>
 
+<!-- Multi-operator warning banner -->
+<div id="multi-operator-banner">
+  ⚠ Another operator tab is connected — edits may conflict
+</div>
+
 <!-- Queue -->
 <div id="queue-panel">
   <div class="panel-header">
     <h2>Timer Queue</h2>
+    <button class="btn-icon" title="Export timers to JSON" id="btn-export" style="font-size:14px;">↓</button>
+    <label class="btn-icon" title="Import timers from JSON (replaces all)" style="cursor:pointer;font-size:14px;">
+      ↑<input type="file" id="import-file" accept=".json" style="display:none">
+    </label>
+    <button class="btn-icon" id="btn-clear-all-timers" title="Delete all timers" style="font-size:14px;color:var(--red);">🗑</button>
     <button class="btn-icon" id="btn-add" title="Add timer">+</button>
   </div>
   <div id="timer-queue"></div>
@@ -1235,6 +1263,19 @@
       </label>
       <div class="hint">Automatically expand subtimers in the queue on page load</div>
     </div>
+
+    <div class="settings-section-label">Timer Presets</div>
+    <div class="hint" style="margin-top:-8px;">Save current defaults as a named preset for quick timer creation.</div>
+
+    <div class="field">
+      <label>Preset Name</label>
+      <div style="display:flex;gap:8px;">
+        <input type="text" id="s-preset-name" placeholder="e.g. 5-min segment" style="flex:1;">
+        <button class="btn btn-ghost" id="btn-save-preset" style="white-space:nowrap;">Save Preset</button>
+      </div>
+    </div>
+
+    <div id="presets-list" style="display:flex;flex-direction:column;gap:4px;"></div>
   </div>
   <div id="settings-footer">
     <button class="btn btn-ghost" id="btn-settings-cancel">Cancel</button>
@@ -1255,6 +1296,11 @@ const ws = new WebSocket(`${wsProtocol}//${location.host}`);
 ws.addEventListener('open', async () => {
   try {
     const res = await fetch('/api/operator-token');
+    if (!res.ok) {
+      console.error('Operator token fetch failed (HTTP ' + res.status + ') — redirecting to login');
+      window.location.href = '/login?next=/operator.html';
+      return;
+    }
     const { token } = await res.json();
     send({ action: 'identify_operator', secret: token });
   } catch (e) {
@@ -1264,6 +1310,13 @@ ws.addEventListener('open', async () => {
 ws.addEventListener('message', e => {
   try {
     const msg = JSON.parse(e.data);
+    if (msg.type === 'auth_result') {
+      if (!msg.ok) {
+        console.error('Operator auth failed — redirecting to login');
+        window.location.href = '/login?next=/operator.html';
+      }
+      return;
+    }
     if (msg.type === 'state' || msg.type === 'tick') {
       state = { timers: msg.timers, activeTimerIndex: msg.activeTimerIndex, activeSubtimerIndex: msg.activeSubtimerIndex ?? null, settings: msg.settings || {} };
       if (msg.type === 'state') {        // On first load, apply the default expand setting
@@ -1279,6 +1332,7 @@ ws.addEventListener('message', e => {
           const isInSubEditor = focused && (focused.classList.contains('sub-name-input') || focused.classList.contains('sub-dur-input'));
           if (!isInSubEditor) renderSubtimerEditor(editingId);
         }
+        if (document.getElementById('settings-panel').classList.contains('open')) renderPresets();
         if (openEditorOnNextCreate && state.timers.length > 0) {
           openEditorOnNextCreate = false;
           const last = state.timers[state.timers.length - 1];
@@ -1310,6 +1364,9 @@ ws.addEventListener('message', e => {
       renderActiveDisplay();
     } else if (msg.type === 'hand_queue') {
       renderHandQueue(msg.queue || []);
+    } else if (msg.type === 'operator_count') {
+      const banner = document.getElementById('multi-operator-banner');
+      if (banner) banner.classList.toggle('visible', msg.count > 1);
     }
   } catch (err) {
     console.error('WS message handler error:', err);
@@ -1481,6 +1538,7 @@ function renderQueue() {
         <div class="item-actions">
           ${hasSubs ? `<button class="queue-subtimer-toggle" data-id="${tid}" title="${isExpanded ? 'Collapse' : 'Expand'} subtimers">${isExpanded ? '▲' : '▼'} ${t.subtimers.length}</button>` : ''}
           <button class="item-btn set-active-btn ${i === activeTimerIndex ? 'is-active' : ''}" data-id="${tid}" title="${i === activeTimerIndex ? 'Remove from display' : 'Set as active timer on display'}">${i === activeTimerIndex ? '⏹ Live' : '▶ Live'}</button>
+          <button class="item-btn dup-btn" data-id="${tid}" title="Duplicate timer">⧉</button>
           <button class="item-btn move-btn" data-id="${tid}" data-dir="up" title="Move up">↑</button>
           <button class="item-btn move-btn" data-id="${tid}" data-dir="down" title="Move down">↓</button>
           <button class="item-btn del del-btn" data-id="${tid}" title="Delete">✕</button>
@@ -1501,6 +1559,10 @@ function renderQueue() {
   // Set Active button → make this the live display timer
   qEl.querySelectorAll('.set-active-btn').forEach(btn => {
     btn.addEventListener('click', () => send({ action: 'select', id: +btn.dataset.id }));
+  });
+
+  qEl.querySelectorAll('.dup-btn').forEach(btn => {
+    btn.addEventListener('click', () => send({ action: 'duplicate', id: +btn.dataset.id }));
   });
 
   qEl.querySelectorAll('.del-btn').forEach(btn => {
@@ -1927,6 +1989,7 @@ function openSettings() {
   document.getElementById('toggle-track-subtimers-expanded').classList.toggle('on', subtimersExpandedEnabled);
   document.getElementById('settings-panel').classList.add('open');
   document.getElementById('settings-overlay').classList.add('open');
+  renderPresets();
 }
 
 function closeSettings() {
@@ -1994,6 +2057,121 @@ function renderHandQueue(queue) {
 
 document.getElementById('btn-clear-queue').addEventListener('click', () => {
   send({ action: 'clear_queue' });
+});
+
+// ── Delete all timers ─────────────────────────────────────────────────────
+document.getElementById('btn-clear-all-timers').addEventListener('click', () => {
+  if (!confirm('Delete ALL timers? This cannot be undone.')) return;
+  editingId = null;
+  document.getElementById('no-selection').style.display = '';
+  document.getElementById('editor').style.display = 'none';
+  send({ action: 'clear_all_timers' });
+});
+
+// ── Export ────────────────────────────────────────────────────────────────
+document.getElementById('btn-export').addEventListener('click', async () => {
+  try {
+    const res = await fetch('/api/export');
+    const blob = await res.blob();
+    const cd = res.headers.get('content-disposition') || '';
+    const match = cd.match(/filename="([^"]+)"/);
+    const filename = match ? match[1] : 'showclock-export.json';
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+    toast('Exported!');
+  } catch (e) { toast('Export failed'); }
+});
+
+// ── Import ────────────────────────────────────────────────────────────────
+document.getElementById('import-file').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (!confirm('Import will replace ALL existing timers. Continue?')) {
+    e.target.value = '';
+    return;
+  }
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    const res = await fetch('/api/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const result = await res.json();
+    if (res.ok) {
+      // Close editor since imported timers are new objects
+      editingId = null;
+      document.getElementById('no-selection').style.display = '';
+      document.getElementById('editor').style.display = 'none';
+      toast(`Imported ${result.imported} timer(s)`);
+    } else {
+      toast(`Import failed: ${result.error}`);
+    }
+  } catch (e) { toast('Import failed — invalid file'); }
+  e.target.value = '';
+});
+
+// ── Presets ───────────────────────────────────────────────────────────────
+function renderPresets() {
+  const listEl = document.getElementById('presets-list');
+  if (!listEl) return;
+  let presets = [];
+  try { presets = JSON.parse(state.settings.presets || '[]'); } catch {}
+  if (!presets.length) {
+    listEl.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:4px 0;">No presets saved yet.</div>';
+    return;
+  }
+  listEl.innerHTML = presets.map(p => `
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;">
+      <span style="flex:1;font-size:12px;font-weight:600;">${esc(p.name)}</span>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--muted);">${fmt(p.duration)}</span>
+      <button class="item-btn preset-use-btn" data-name="${esc(p.name)}" title="Create timer from preset">Use</button>
+      <button class="item-btn del preset-del-btn" data-name="${esc(p.name)}" title="Delete preset">✕</button>
+    </div>
+  `).join('');
+  listEl.querySelectorAll('.preset-use-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      let presets = [];
+      try { presets = JSON.parse(state.settings.presets || '[]'); } catch {}
+      const p = presets.find(p => p.name === btn.dataset.name);
+      if (!p) return;
+      openEditorOnNextCreate = true;
+      send({ action: 'create', timer: {
+        name:      p.name,
+        duration:  p.duration,
+        yellowAt:  p.yellowAt,
+        redAt:     p.redAt,
+        flashAt:   p.flashAt,
+        flashRate: p.flashRate,
+      }});
+      closeSettings();
+    });
+  });
+  listEl.querySelectorAll('.preset-del-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      send({ action: 'delete_preset', name: btn.dataset.name });
+    });
+  });
+}
+
+document.getElementById('btn-save-preset').addEventListener('click', () => {
+  const name = document.getElementById('s-preset-name').value.trim();
+  if (!name) { toast('Enter a preset name'); return; }
+  const duration = parseDuration(document.getElementById('s-duration').value);
+  send({
+    action:    'save_preset',
+    name,
+    duration,
+    yellowAt:  +document.getElementById('s-yellow-at').value  || 60,
+    redAt:     +document.getElementById('s-red-at').value     || 30,
+    flashAt:   +document.getElementById('s-flash-at').value   || 30,
+    flashRate: +document.getElementById('s-flash-rate').value || 1000,
+  });
+  document.getElementById('s-preset-name').value = '';
+  toast(`Preset "${name}" saved`);
 });
 
 // ── Transport ─────────────────────────────────────────────────────────────
