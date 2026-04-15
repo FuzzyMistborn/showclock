@@ -664,11 +664,11 @@ wss.on('connection', ws => {
         stmts.subInsert.run({
           parent_id: msg.parentId, sort_order: t.subtimers.length,
           name:       safeName(msg.subtimer?.name, 'Part'),
-          duration:   safeInt(msg.subtimer?.duration,  60,                  1, 86400),
-          yellow_at:  safeInt(msg.subtimer?.yellowAt,  +s.default_yellow_at, 0, 86400),
-          red_at:     safeInt(msg.subtimer?.redAt,     +s.default_red_at,    0, 86400),
-          flash_at:   safeInt(msg.subtimer?.flashAt,   +s.default_flash_at,  0, 86400),
-          flash_rate: safeInt(msg.subtimer?.flashRate, +s.default_flash_rate, 100, 10000),
+          duration:   safeInt(msg.subtimer?.duration,  60,        1, 86400),
+          yellow_at:  safeInt(msg.subtimer?.yellowAt,  t.yellowAt, 0, 86400),
+          red_at:     safeInt(msg.subtimer?.redAt,     t.redAt,    0, 86400),
+          flash_at:   safeInt(msg.subtimer?.flashAt,   t.flashAt,  0, 86400),
+          flash_rate: safeInt(msg.subtimer?.flashRate, t.flashRate, 100, 10000),
         });
         const existingSubs = t.subtimers;
         t.subtimers = stmts.subAll.all({ parent_id: msg.parentId }).map(row => { const ex = existingSubs.find(s => s.id === row.id); return ex || dbRowToSubtimer(row); });
@@ -899,7 +899,6 @@ wss.on('connection', ws => {
             }
           }
         }
-        ws.send(JSON.stringify({ type: 'auth_result', ok: !!ws._isOperator }));
         if (ws._isOperator) {
           ws.send(JSON.stringify({ type: 'state', timers, activeTimerIndex, activeSubtimerIndex, settings }));
           broadcastOperatorCount();
