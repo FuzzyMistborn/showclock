@@ -611,6 +611,11 @@ wss.on('connection', ws => {
         Object.assign(timer, { name: newName, duration: newDuration, message: newMessage, yellowAt: newYellow, redAt: newRed, flashAt: newFlashAt, flashRate: newFlashRate });
         if (!wasRunning && !wasPartiallyRun) timer.remaining = timer.duration;
         else if (!wasRunning && durationChanged) timer.remaining = timer.duration;
+        // Cascade threshold changes to subtimers so they stay in sync with the parent
+        timer.subtimers.forEach(sub => {
+          stmts.subUpdate.run({ id: sub.id, name: sub.name, duration: sub.duration, yellow_at: newYellow, red_at: newRed, flash_at: newFlashAt, flash_rate: newFlashRate });
+          Object.assign(sub, { yellowAt: newYellow, redAt: newRed, flashAt: newFlashAt, flashRate: newFlashRate });
+        });
         broadcastState(); break;
       }
 
