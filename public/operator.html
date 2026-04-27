@@ -1318,7 +1318,7 @@ ws.addEventListener('message', e => {
       return;
     }
     if (msg.type === 'state' || msg.type === 'tick') {
-      state = { timers: msg.timers, activeTimerIndex: msg.activeTimerIndex, activeSubtimerIndex: msg.activeSubtimerIndex ?? null, settings: msg.settings || {} };
+      state = { timers: msg.timers, activeTimerIndex: msg.activeTimerIndex, activeSubtimerIndex: msg.activeSubtimerIndex ?? null, settings: msg.settings !== undefined ? msg.settings : (state.settings || {}) };
       if (msg.type === 'state') {        // On first load, apply the default expand setting
         if (!expandedTimersInitialized) {
           expandedTimersInitialized = true;
@@ -1433,13 +1433,16 @@ function initScrubber() {
   function moveDrag(e) {
     if (!isDragging) return;
     e.preventDefault();
-    const { timers, activeTimerIndex } = state;
+    const { timers, activeTimerIndex, activeSubtimerIndex } = state;
     const t = timers[activeTimerIndex];
     if (!t) return;
+    const activeSub = (activeSubtimerIndex !== null && t.subtimers && t.subtimers[activeSubtimerIndex])
+      ? t.subtimers[activeSubtimerIndex] : null;
+    const activeDuration = activeSub ? activeSub.duration : t.duration;
 
     const pct = getPct(e);
     dragPreviewPct = pct * 100;
-    const previewRemaining = Math.round(pct * t.duration);
+    const previewRemaining = Math.round(pct * activeDuration);
 
     // Update bar visually
     document.getElementById('active-progress-bar').style.width = `${dragPreviewPct}%`;
@@ -1462,10 +1465,13 @@ function initScrubber() {
     scrubber.classList.remove('dragging');
     document.getElementById('active-progress-bar').classList.add('smooth');
 
-    const { timers, activeTimerIndex } = state;
+    const { timers, activeTimerIndex, activeSubtimerIndex } = state;
     const t = timers[activeTimerIndex];
     if (t && dragPreviewPct !== null) {
-      const newRemaining = Math.round((dragPreviewPct / 100) * t.duration);
+      const activeSub = (activeSubtimerIndex !== null && t.subtimers && t.subtimers[activeSubtimerIndex])
+        ? t.subtimers[activeSubtimerIndex] : null;
+      const activeDuration = activeSub ? activeSub.duration : t.duration;
+      const newRemaining = Math.round((dragPreviewPct / 100) * activeDuration);
       send({ action: 'scrub', remaining: newRemaining });
     }
     dragPreviewPct = null;
