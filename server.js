@@ -231,7 +231,8 @@ app.post('/login', (req, res) => {
   const sessionOperatorSecret = crypto.randomBytes(16).toString('hex');
   const SESSION_TTL = parseInt(process.env.SESSION_TTL_HOURS || '24') * 60 * 60 * 1000;
   sessions.set(token, { expiresAt: Date.now() + SESSION_TTL, operatorSecret: sessionOperatorSecret });
-  const next = req.query.next || '/operator.html';
+  const rawNext = String(req.query.next || '');
+  const next = rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/operator.html';
   const securePart = TRUST_PROXY ? ' Secure;' : '';
   res.setHeader('Set-Cookie', `sc_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_TTL / 1000};${securePart}`);
   res.redirect(next);
@@ -521,18 +522,22 @@ app.post('/api/import', requireAuth, express.json({ limit: '1mb' }), (req, res) 
         flash_rate: safeInt(t.flashRate,+s.default_flash_rate, 100, 10000),
       });
       if (Array.isArray(t.subtimers)) {
+        let subTotal = 0;
         t.subtimers.forEach((sub, i) => {
           if (typeof sub !== 'object' || !sub) return;
+          const subDuration = safeInt(sub.duration, 60, 1, 86400);
+          subTotal += subDuration;
           stmts.subInsert.run({
             parent_id: info.lastInsertRowid, sort_order: i,
             name:       safeName(sub.name, 'Part'),
-            duration:   safeInt(sub.duration, 60, 1, 86400),
+            duration:   subDuration,
             yellow_at:  safeInt(sub.yellowAt, +s.default_yellow_at, 0, 86400),
             red_at:     safeInt(sub.redAt,    +s.default_red_at,    0, 86400),
             flash_at:   safeInt(sub.flashAt,  +s.default_flash_at,  0, 86400),
             flash_rate: safeInt(sub.flashRate,+s.default_flash_rate, 100, 10000),
           });
         });
+        if (subTotal > 0) stmts.updateDuration.run({ duration: subTotal, id: info.lastInsertRowid });
       }
       imported++;
     });
