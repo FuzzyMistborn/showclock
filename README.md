@@ -2,6 +2,9 @@
 
 A self-hosted stage timer for live events and presentations. Run it in Docker, control it from one browser tab, display it on another.
 
+> [!CAUTION]
+Archiving this in favor of [Podbooth](https://github.com/fuzzymistborn/podbooth) which incorporates many of the same features but with a lot more functionality
+
 > [!WARNING]
 > Disclosure: This was written by AI.  So while it has been tested for bugs/functionality, I cannot guarantee its security (though I have run a few prompts specifically focused on security/vulnerabilities).  Run at your own risk!  I would highly recommend running over something like Tailscale or Wireguard for secure access.
 
